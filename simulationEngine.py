@@ -24,6 +24,10 @@ class SimEngine:
             evt = heapq.heappop(self.events)
             self.clock = evt.time
             self.handle_event(evt)
+        self.end()
+
+    def end(self):
+        raise NotImplementedError
             
     def handle_event(self, evt):
         raise NotImplementedError

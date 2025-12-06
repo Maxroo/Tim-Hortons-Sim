@@ -4,7 +4,7 @@
     a. It is Use mean revenue instead of actual food profit and waste. change it? ------ 
     b. profit and food/beverage waste
 
-3. Need to record customer queue time, currently I am recording customer system time. 
+3. Need to record customer queue time, currently I am recording customer system time. Brew time.
 
 4. Need add a warm up period before recording.
 
@@ -20,3 +20,5 @@
 7. wait time avg is unreasonably high, maybe there are some logic error..
 
 8. maybe stop take customer until certain time.
+
+9. For now I am adding mobile throughput even when they renege. But why renege count is more than throughput....?  

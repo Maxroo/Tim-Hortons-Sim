@@ -13,7 +13,14 @@ class Statistics:
         self.balk_count = 0
         self.renege_count = 0
 
-        # --- 1. Throughput (Count by Channel) ---
+        # count of total arrivals
+        self.total_arrivals = { 
+            Channel.WALK_IN: 0, 
+            Channel.DRIVE_THRU: 0,
+            Channel.MOBILE: 0
+        }
+
+        # count Throughput (Count by Channel), how many order completed. 
         self.throughput = {
             Channel.WALK_IN: 0, 
             Channel.DRIVE_THRU: 0, 
@@ -36,10 +43,23 @@ class Statistics:
             'ESPRESSO': 0.0
         }
 
+        self.queue_lengths = {
+            'CASHIER': 0, 
+            'DRIVE_THRU': 0,
+            'KITCHEN': 0,
+            'PACKING': 0    
+        }
+
         # --- Resource Usage (Accumulators) ---
         # We track total minutes resources were active
         self.busy_minutes_cooks = 0.0
         self.busy_minutes_espresso = 0.0
+    
+    def record_queue_length(self, queue_name, length):
+        self.queue_lengths[queue_name] = length
+
+    def record_arrival(self, channel):
+        self.total_arrivals[channel] += 1
 
     def record_waste(self):
         self.waste_count += 1
@@ -65,8 +85,14 @@ class Statistics:
         report = {}
         
         # A. Throughput
+        report['arrival_total'] = sum(self.total_arrivals.values())
+        report['arrival_breakdown'] = self.total_arrivals
+
         report['throughput_total'] = sum(self.throughput.values())
         report['throughput_breakdown'] = self.throughput
+
+        report['queue_lengths'] = sum(self.queue_lengths.values())
+        report['queue_breakdown'] = self.queue_lengths
         
         # B. Wait Times (Avg + Tail)
         for channel, times in self.wait_times.items():
@@ -120,7 +146,7 @@ class Statistics:
             elif isinstance(value, dict):
                 # If it's a nested dictionary (like breakdown), make it a string
                 # e.g., {'WALK_IN': 10, ...} -> "WALK_IN: 10, ..."
-                formatted_value = ", ".join([f"{k.name}: {v}" for k, v in value.items()])
+                formatted_value = ", ".join([f"{k}: {v}" for k, v in value.items()])
                 
             else:
                 # Integers or Strings

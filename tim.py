@@ -69,6 +69,7 @@ class TimHortonsSim(SimEngine):
             # Enter the Lane
             self.q_drivethru.append(customer)
             self.try_start_drivethru()
+            self.stats.record_arrival(Channel.DRIVE_THRU)
 
         # --- B. MOBILE LOGIC ---
         elif customer.channel == Channel.MOBILE:
@@ -76,12 +77,14 @@ class TimHortonsSim(SimEngine):
             self.q_kitchen.append(customer)
             self.schedule(self.cfg.mobile_patience, EventType.RENEGE_CHECK, customer)
             self.try_start_kitchen()
+            self.stats.record_arrival(Channel.MOBILE)
 
         # --- C. WALK-IN LOGIC ---
         elif customer.channel == Channel.WALK_IN:
             # Enter the store line
             self.q_walkin.append(customer)
             self.try_start_walkin()
+
 
     # ==========================
     # 2. SERVICE LOGIC (Split)
@@ -97,6 +100,7 @@ class TimHortonsSim(SimEngine):
             duration = random.expovariate(1.0 / self.cfg.mean_cashier_time)
             self.stats.record_usage('CASHIER', duration)
             self.schedule(duration, EventType.PAYMENT_DONE, cust)
+            self.stats.record_arrival(Channel.WALK_IN)
 
     def process_walkin_done(self, customer):
         self.busy_cashiers -= 1
@@ -115,6 +119,7 @@ class TimHortonsSim(SimEngine):
             duration = random.expovariate(1.0 / self.cfg.mean_dt_order_time)
             self.stats.record_usage('DRIVE_THRU', duration)
             self.schedule(duration, EventType.PAYMENT_DONE, cust)
+            self.stats.record_arrival(Channel.DRIVE_THRU)
 
     def process_drivethru_done(self, customer):
         self.busy_dt_stations -= 1
@@ -143,8 +148,10 @@ class TimHortonsSim(SimEngine):
         if cust.has_reneged:
             # Customer already left, remove order
             self.q_kitchen.popleft()
-            self.stats.record_waste()
-            self.stats.record_success(cust.channel, self.clock - cust.arrival_time, 0) # customer left, no revenue
+
+            #  has not start making yet. so don't record waste 
+            self.stats.record_success(cust.channel, self.clock - cust.arrival_time, 0) # customer left, no revenue,
+
             self.try_start_kitchen() # Check next order
             return
         
@@ -230,7 +237,6 @@ class TimHortonsSim(SimEngine):
             
             if cust.has_reneged:
                 self.stats.record_waste()
-                self.stats.record_success(cust.channel, self.clock - cust.arrival_time, 0) # customer left, no revenue
                 self.try_start_packing()
                 return
 
@@ -247,10 +253,10 @@ class TimHortonsSim(SimEngine):
         customer.is_ready = True
         
         # Schedule Pickup
-        # Walk-in: Immediate. Drive-thru: 1 min window. Mobile: Random lag.
+        # Walk-in: Immediate. Drive-thru: Immediate. Mobile: Random 1 -3 lag.
         lag = 0
-        if customer.channel == Channel.MOBILE: lag = random.uniform(2, 10)
-        elif customer.channel == Channel.DRIVE_THRU: lag = 0.5
+        
+        if customer.channel == Channel.MOBILE: lag = random.uniform(1, 3)
         
         self.schedule(lag, EventType.PICKUP, customer)
         self.try_start_packing() # Packer takes next
@@ -301,3 +307,11 @@ class TimHortonsSim(SimEngine):
 
         new_cust = Customer(new_id, channel, self.clock + delay, needs_coffee, needs_espresso, needs_hot_food)
         self.schedule(delay, EventType.ARRIVAL, new_cust)
+
+    def end(self):
+        self.stats.record_time(self.clock)
+        # record customer still in queue 
+        self.stats.record_queue_length('CASHIER', len(self.q_walkin))
+        self.stats.record_queue_length('DRIVE_THRU', len(self.q_drivethru))
+        self.stats.record_queue_length('KITCHEN', len(self.q_kitchen))
+        self.stats.record_queue_length('PACKING', len(self.q_packing))
