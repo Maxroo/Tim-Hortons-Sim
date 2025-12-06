@@ -1,217 +1,303 @@
-class TimHortonsModel(SimulationEngine):
-    def __init__(self, config: Config):
+from simulationEngine import *
+from statsRecorder import *
+
+class TimHortonsSim(SimEngine):
+    def __init__(self, config: SimulationConfig):
         super().__init__()
         self.cfg = config
+        random.seed(self.cfg.random_seed)
+
+        # --- Customer Counter ---
+        self.customer_counter = 3 # take into account with initial arrivals
+        # --- Queues (FIFO) ---
+        self.q_walkin = deque()      # People inside
+        self.q_drivethru = deque()   # Cars outside
+        self.q_kitchen = deque()     # Orders (Shared)
+        self.q_packing = deque()     # Food waiting to be packed
         
-        # --- RESOURCES & QUEUES ---
-        # Queues (FIFO)
-        self.q_cashier = deque()
-        self.q_kitchen = deque() # Shared by all orders
-        self.q_packing = deque()
-        self.q_drive_pickup = deque() # Waiting for window
-        
-        # Resource States (Counters)
+        # --- Resources (Counters) ---
         self.busy_cashiers = 0
+        self.busy_dt_stations = 0
         self.busy_cooks = 0
         self.busy_packers = 0
+        self.busy_espresso_machines = 0
         
-        # Complex Resources
-        self.coffee_level = config.COFFEE_URN_CAPACITY
+        # --- Complex Resources ---
+        self.coffee_level = config.coffee_urn_size
         self.is_brewing = False
         self.shelf_occupancy = 0
         
-        # Statistics
-        self.stats = {
-            'revenue': 0, 'balks': 0, 'reneges': 0, 
-            'served': 0, 'wasted_food': 0
-        }
+        # --- Stats ---
+        self.stats = Statistics(config)
+
+    def handle_event(self, evt):
+        if evt.type == EventType.ARRIVAL:
+            self.process_arrival(evt.customer)
+        elif evt.type == EventType.PAYMENT_DONE:
+            if evt.customer.channel == Channel.WALK_IN:
+                self.process_walkin_done(evt.customer)
+            elif evt.customer.channel == Channel.DRIVE_THRU:
+                self.process_drivethru_done(evt.customer)
+        elif evt.type == EventType.BREW_COMPLETE:
+            self.process_brew_complete()
+        elif evt.type == EventType.RENEGE_CHECK:
+            self.process_renege_check(evt.customer)
+        elif evt.type == EventType.KITCHEN_DONE:
+            self.process_kitchen_done(evt.customer)
+        elif evt.type == EventType.PACKING_DONE:
+            self.process_packing_done(evt.customer)
+        elif evt.type == EventType.PICKUP:
+            self.process_pickup(evt.customer)
 
     # ==========================
-    # EVENT DISPATCHER
+    # 1. ARRIVAL LOGIC
     # ==========================
-    def handle_event(self, event: Event):
-        if event.event_type == EventType.ARRIVAL:
-            self.process_arrival(event.customer)
+    def process_arrival(self, customer):
+        self.schedule_next_arrival(customer.channel)
+
+        # --- A. DRIVE-THRU LOGIC ---
+        if customer.channel == Channel.DRIVE_THRU:
+            # STRICT BALKING: Only check the vehicle queue
+            # Cars waiting to order + Cars currently ordering
+            cars_in_lane = len(self.q_drivethru) + self.busy_dt_stations
             
-        elif event.event_type == EventType.ORDER_COMPLETED:
-            self.process_order_complete(event.customer)
+            if cars_in_lane >= self.cfg.max_drive_thru_queue:
+                customer.has_balked = True
+                self.stats.record_balk()
+                return 
             
-        elif event.event_type == EventType.KITCHEN_PREP_DONE:
-            self.process_prep_done(event.customer)
-            
-        elif event.event_type == EventType.PACKING_DONE:
-            self.process_pack_done(event.customer)
-            
-        elif event.event_type == EventType.BREW_FINISH:
-            self.process_brew_finish()
-            
-        elif event.event_type == EventType.MOBILE_RENEGE_CHECK:
-            self.process_renege_check(event.customer)
+            # Enter the Lane
+            self.q_drivethru.append(customer)
+            self.try_start_drivethru()
+
+        # --- B. MOBILE LOGIC ---
+        elif customer.channel == Channel.MOBILE:
+            # Goes straight to Kitchen
+            self.q_kitchen.append(customer)
+            self.schedule(self.cfg.mobile_patience, EventType.RENEGE_CHECK, customer)
+            self.try_start_kitchen()
+
+        # --- C. WALK-IN LOGIC ---
+        elif customer.channel == Channel.WALK_IN:
+            # Enter the store line
+            self.q_walkin.append(customer)
+            self.try_start_walkin()
 
     # ==========================
-    # LOGIC HANDLERS
+    # 2. SERVICE LOGIC (Split)
     # ==========================
     
-    def process_arrival(self, customer):
-        # 1. Schedule next arrival (Bootstrap)
-        self.schedule_next_arrival()
-
-        # 2. Logic based on channel
-        if customer.channel == Channel.DRIVE_THRU:
-            # BALKING LOGIC
-            # Note: We approximate DT queue size as orders in system not yet paid
-            dt_queue_len = len(self.q_cashier) + len(self.q_kitchen) 
-            if dt_queue_len > self.cfg.MAX_DRIVE_THRU_QUEUE:
-                customer.balked = True
-                self.stats['balks'] += 1
-                return # Exit system
-        
-        elif customer.channel == Channel.MOBILE:
-            # RENEGING LOGIC
-            # Schedule a future check: "In 15 mins, check if I'm still waiting"
-            self.schedule(15.0, EventType.MOBILE_RENEGE_CHECK, customer)
-            # Skip cashier, go straight to kitchen queue
-            self.q_kitchen.append(customer)
-            self.try_start_kitchen()
-            return
-
-        # 3. Add to Cashier Queue (Walk-in & DT)
-        self.q_cashier.append(customer)
-        self.try_start_cashier()
-
-    def try_start_cashier(self):
-        # If staff free AND customers waiting
-        if self.busy_cashiers < self.cfg.NUM_CASHIERS and self.q_cashier:
-            customer = self.q_cashier.popleft()
+    # --- Walk-In Cashiers ---
+    def try_start_walkin(self):
+        # Only use Cashier Resources
+        if self.busy_cashiers < self.cfg.num_cashiers and self.q_walkin:
+            cust = self.q_walkin.popleft()
             self.busy_cashiers += 1
             
-            # Service Time (Random)
-            duration = random.expovariate(1.0 / 2.0) # Avg 2 mins
-            self.schedule(duration, EventType.ORDER_COMPLETED, customer)
+            duration = random.expovariate(1.0 / self.cfg.mean_cashier_time)
+            self.stats.record_usage('CASHIER', duration)
+            self.schedule(duration, EventType.PAYMENT_DONE, cust)
 
-    def process_order_complete(self, customer):
+    def process_walkin_done(self, customer):
         self.busy_cashiers -= 1
-        self.try_start_cashier() # Pull next person
+        self.try_start_walkin() # Call "Next!"
         
-        # Move customer to Kitchen Queue
+        # Merge into Kitchen
         self.q_kitchen.append(customer)
         self.try_start_kitchen()
 
-    def try_start_kitchen(self):
-        """
-        The Brain: Matches Cooks + Coffee + Orders
-        """
-        if not self.q_kitchen:
-            return
+    # --- Drive-Thru Stations ---
+    def try_start_drivethru(self):
+        # Only use DT Station Resources
+        if self.busy_dt_stations < self.cfg.num_dt_stations and self.q_drivethru:
+            cust = self.q_drivethru.popleft()
+            self.busy_dt_stations += 1
+            duration = random.expovariate(1.0 / self.cfg.mean_dt_order_time)
+            self.stats.record_usage('DRIVE_THRU', duration)
+            self.schedule(duration, EventType.PAYMENT_DONE, cust)
 
-        # Check Resources
-        if self.busy_cooks < self.cfg.NUM_COOKS:
-            # Peek at next customer (don't pop yet)
-            next_cust = self.q_kitchen[0]
-            
-            # COFFEE CONSTRAINT
-            needs_coffee = 'COFFEE' in next_cust.items_needed
-            if needs_coffee and self.coffee_level <= 0:
-                if not self.is_brewing:
-                    self.start_brewing()
-                return # BLOCKED: Cannot start this order
-
-            # If we get here, we can cook
-            customer = self.q_kitchen.popleft()
-            self.busy_cooks += 1
-            if needs_coffee:
-                self.coffee_level -= 1
-            
-            # Service Time
-            duration = random.normalvariate(3.0, 1.0) # Avg 3 mins
-            duration = max(0.5, duration) 
-            self.schedule(duration, EventType.KITCHEN_PREP_DONE, customer)
-
-    def start_brewing(self):
-        self.is_brewing = True
-        # Takes 5 minutes to brew
-        self.schedule(5.0, EventType.BREW_FINISH)
-
-    def process_brew_finish(self):
-        self.coffee_level = self.cfg.COFFEE_URN_CAPACITY
-        self.is_brewing = False
-        # Coffee is ready, try to unblock kitchen
+    def process_drivethru_done(self, customer):
+        self.busy_dt_stations -= 1
+        self.try_start_drivethru() # Next car pulls up to speaker
+        
+        # Merge into Kitchen
+        self.q_kitchen.append(customer)
         self.try_start_kitchen()
 
-    def process_prep_done(self, customer):
-        self.busy_cooks -= 1
-        self.try_start_kitchen() # Cook takes next order
+    # ==========================
+    # 3. KITCHEN LOGIC (The Hard Part)
+    # ==========================
+    def try_start_kitchen(self):
+        """
+        Attempts to start the next order.
+        Requires handling multiple resource dependencies.
+        """
+        if not self.q_kitchen: return
         
+        # 1. PRIMARY RESOURCE CHECK: We always need a human
+        if self.busy_cooks >= self.cfg.num_cooks: 
+            return
+
+        # Peek at the next customer (don't remove yet)
+        cust = self.q_kitchen[0]
+        if cust.has_reneged:
+            # Customer already left, remove order
+            self.q_kitchen.popleft()
+            self.stats.record_waste()
+            self.stats.record_success(cust.channel, self.clock - cust.arrival_time, 0) # customer left, no revenue
+            self.try_start_kitchen() # Check next order
+            return
+        
+        # 2. SECONDARY RESOURCE CHECKS (Equipment/Ingredients)
+        
+        # Case A: Espresso Order (Needs Machine)
+        if cust.needs_espresso:
+            if self.busy_espresso_machines >= self.cfg.num_espresso_machines:
+                return # BLOCKED: Cook is free, but Machine is busy
+        
+        # Case B: Brewed Coffee Order (Needs Liquid)
+        elif cust.needs_coffee:
+            if self.coffee_level <= 0:
+                if not self.is_brewing:
+                    self.start_brewing()
+                return # BLOCKED: Cook is free, but Coffee is empty
+
+        # 3. SEIZE RESOURCES (If we survived the checks)
+        self.q_kitchen.popleft() # Now we commit
+        
+        self.busy_cooks += 1
+        
+        duration = 0.0
+
+        if cust.needs_espresso:
+            self.busy_espresso_machines += 1
+            espressoDuration = random.expovariate(1.0 / self.cfg.mean_espresso_time)
+            duration += espressoDuration
+            self.stats.record_usage('ESPRESSO', espressoDuration)
+
+        if cust.needs_coffee:
+            self.coffee_level -= 1
+            brewedDuration = 0.5 # Pouring is fast
+            duration += brewedDuration
+
+        if cust.needs_hot_food:
+            # Just food
+            hotFoodDuration = random.expovariate(1.0 / self.cfg.mean_kitchen_time)
+            self.stats.record_usage('COOK', hotFoodDuration)
+            duration += hotFoodDuration
+
+        if duration == 0:
+            raise ValueError("Order has no items to prepare!")
+        
+        self.schedule(duration, EventType.KITCHEN_DONE, cust)
+
+    def process_kitchen_done(self, customer):
+        # 1. Free the Human
+        self.busy_cooks -= 1
+        
+        # 2. Free the Machine (if used)
+        if customer.needs_espresso:
+            self.busy_espresso_machines -= 1
+            
+        # 3. Pull next order
+        self.try_start_kitchen()
+
+        # 4. Move to Packing
         self.q_packing.append(customer)
         self.try_start_packing()
 
+    def start_brewing(self):
+        self.is_brewing = True
+        # Schedule the "Refill" event in the future
+        self.schedule(self.cfg.brew_time, EventType.BREW_COMPLETE)
+
+    def process_brew_complete(self):
+        self.coffee_level = self.cfg.coffee_urn_size
+        self.is_brewing = False
+        # Unblock kitchen
+        self.try_start_kitchen()
+
+    # ==========================
+    # 4. PACKING LOGIC (Blocking)
+    # ==========================
     def try_start_packing(self):
-        # BLOCKING CONSTRAINT: Shelf Capacity
-        if self.shelf_occupancy >= self.cfg.SHELF_CAPACITY:
-            return # Packer is blocked, cannot start new pack
-
-        if self.busy_packers < self.cfg.NUM_PACKERS and self.q_packing:
-            customer = self.q_packing.popleft()
-            self.busy_packers += 1
+        # Constraint: Shelf Space
+        if self.shelf_occupancy >= self.cfg.pickup_shelf_capacity:
+            return # Blocked
             
-            duration = 1.0 # 1 min to pack
-            self.schedule(duration, EventType.PACKING_DONE, customer)
+        if self.busy_packers < self.cfg.num_packers and self.q_packing:
+            cust = self.q_packing.popleft()
+            
+            if cust.has_reneged:
+                self.stats.record_waste()
+                self.stats.record_success(cust.channel, self.clock - cust.arrival_time, 0) # customer left, no revenue
+                self.try_start_packing()
+                return
 
-    def process_pack_done(self, customer):
+            self.busy_packers += 1
+            duration = random.expovariate(1.0 / self.cfg.mean_pack_time)
+            self.stats.record_usage('PACKER', duration)
+            self.schedule(duration, EventType.PACKING_DONE, cust)
+
+    def process_packing_done(self, customer):
         self.busy_packers -= 1
         
         # Put on shelf
         self.shelf_occupancy += 1
         customer.is_ready = True
         
-        # Simulate Customer Pickup Lag
-        # (Mobile users might come later, Walk-ins are immediate)
-        pickup_lag = 0 if customer.channel == Channel.WALK_IN else random.uniform(0, 10)
+        # Schedule Pickup
+        # Walk-in: Immediate. Drive-thru: 1 min window. Mobile: Random lag.
+        lag = 0
+        if customer.channel == Channel.MOBILE: lag = random.uniform(2, 10)
+        elif customer.channel == Channel.DRIVE_THRU: lag = 0.5
         
-        # We define a custom inline event logic for pickup to clear shelf
-        # For simplicity, we just count revenue now, but decrement shelf later
-        self.stats['revenue'] += self.cfg.PRICE_AVG
-        self.stats['served'] += 1
-        
-        # Schedule the "Shelf Clearing" event
-        self.schedule(pickup_lag, EventType.CUSTOMER_PICKUP, customer)
-        
-        self.try_start_packing()
+        self.schedule(lag, EventType.PICKUP, customer)
+        self.try_start_packing() # Packer takes next
 
-    def handle_customer_pickup(self, customer):
-        # (This would need to be added to the main dispatch)
-        # Only when they pick up does the shelf clear
+    # ==========================
+    # 5. EXIT LOGIC
+    # ==========================
+    def process_pickup(self, customer):
+        # 1. Always free the shelf space
         self.shelf_occupancy -= 1
-        self.try_start_packing() # Unblock packer if they were stuck
+        self.try_start_packing() # Unblock packer
+        
+        # 2. Check if this is a valid transaction
+        if customer.has_reneged:
+            # The customer left long ago. The food is cold.
+            self.stats.record_waste()
+        else:
+            # Successful transaction
+            wait_time = self.clock - customer.arrival_time
+            self.stats.record_success(
+                customer.channel, 
+                wait_time, 
+                self.cfg.avg_revenue
+            )
 
     def process_renege_check(self, customer):
-        if not customer.is_ready and not customer.balked:
-            # They waited too long and food isn't ready
-            customer.reneged = True
-            self.stats['reneges'] += 1
-            # Note: Removing them from the specific queue (kitchen/pack) 
-            # is computationally expensive in a list. 
-            # In a real sim, we'd mark them 'dead' and when the cook 
-            # pops them, they discard the order.
+        # If time is up and food isn't ready
+        if not customer.is_ready:
+            customer.has_reneged = True
+            self.stats.record_renege()
 
-    def schedule_next_arrival(self):
-        # Helper to keep the simulation running
-        inter_arrival = random.expovariate(1.0/2.0)
-        new_cust = Customer(
-            id=random.randint(1000,9999),
-            channel=random.choice(list(Channel)),
-            arrival_time=self.clock + inter_arrival,
-            items_needed=['COFFEE'] # Simplified
-        )
-        self.schedule(inter_arrival, EventType.ARRIVAL, new_cust)
+    # --- Utility ---
+    def schedule_next_arrival(self, channel):
+        rate = 0
+        if channel == Channel.WALK_IN: rate = self.cfg.lambda_walkin
+        elif channel == Channel.DRIVE_THRU: rate = self.cfg.lambda_drivethru
+        elif channel == Channel.MOBILE: rate = self.cfg.lambda_mobile
+        
+        delay = self.cfg.get_inter_arrival(rate)
+        
+        # Create new customer
+        new_id = self.customer_counter + 1
+        self.customer_counter = new_id
+        
+        needs_coffee = random.random() < self.cfg.prob_order_coffee
+        needs_espresso = not needs_coffee # if not coffee, then espresso
+        needs_hot_food = random.random() < self.cfg.prob_order_hot_food
 
-# --- 4. Running the Experiment ---
-config = Config(NUM_CASHIERS=2, NUM_COOKS=3)
-sim = TimHortonsModel(config)
-
-# Seed first arrival
-first_cust = Customer(1, Channel.WALK_IN, 0.0, ['COFFEE'])
-sim.schedule(0, EventType.ARRIVAL, first_cust)
-
-sim.run(max_time=480) # Run for 8 hours (480 mins)
-print("Simulation Ended. Stats:", sim.stats)
+        new_cust = Customer(new_id, channel, self.clock + delay, needs_coffee, needs_espresso, needs_hot_food)
+        self.schedule(delay, EventType.ARRIVAL, new_cust)

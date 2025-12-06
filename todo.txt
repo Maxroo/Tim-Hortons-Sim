@@ -1,0 +1,22 @@
+1. dynamic lambda for arriving 
+
+2. No menu, Customer always take either coffee or expresso, but not always hot food. Maybe need to add prob for ordering multiple coffee and food?
+    a. It is Use mean revenue instead of actual food profit and waste. change it? ------ 
+    b. profit and food/beverage waste
+
+3. Need to record customer queue time, currently I am recording customer system time. 
+
+4. Need add a warm up period before recording.
+
+5. play around with config..
+    • Staff allocation per shift (e.g., number of cashiers, cooks, baristas, and bussers)
+    • Beverage policy (e.g., urn size and brew schedule)
+    • Prioritization at the pack station (e.g., whether mobile or drive-thru orders get precedence)
+    • Pickup shelf capacity
+    • Number of toasters or espresso machines
+
+6. Dynamic labour cost?
+
+7. wait time avg is unreasonably high, maybe there are some logic error..
+
+8. maybe stop take customer until certain time.

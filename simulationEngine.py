@@ -1,53 +1,29 @@
-import heapq
-import random
-from collections import deque
-from dataclasses import dataclass, field
-from enum import Enum, auto
-from typing import List, Optional, Dict
-
-
-# --- 1. Event Definitions ---
-class EventType(Enum):
-    ARRIVAL = auto()
-    ORDER_COMPLETED = auto()      # Finished paying/ordering at counter/DT
-    KITCHEN_PREP_DONE = auto()    # Cook/Barista finished making item
-    PACKING_DONE = auto()         # Item put in bag/tray
-    CUSTOMER_PICKUP = auto()      # Customer leaves with food
-    BREW_FINISH = auto()          # Coffee urn refill complete
-    MOBILE_RENEGE_CHECK = auto()  # Check if mobile user gave up
+from simulationConfig import *
 
 @dataclass(order=True)
 class Event:
     time: float
-    event_type: EventType = field(compare=False)
-    customer: Optional['Customer'] = field(default=None, compare=False)
-    # Priority tie-breaker (to process simultaneous events deterministically)
-    id: int = field(default=0, compare=False) 
+    type: EventType = field(compare=False)
+    customer: Optional[Customer] = field(default=None, compare=False)
+    id: int = field(default=0, compare=False)
 
-# --- 2. The Base Engine ---
-class SimulationEngine:
+class SimEngine:
     def __init__(self):
         self.clock = 0.0
-        self.event_list = []  # The Min-Heap
-        self.event_count = 0  # Unique ID generator
+        self.events = []
+        self.event_id_counter = 0
 
-    def schedule(self, delay: float, event_type: EventType, customer=None):
-        """Add an event to the future."""
+    def schedule(self, delay, event_type, customer=None):
         timestamp = self.clock + delay
-        self.event_count += 1
-        event = Event(timestamp, event_type, customer, self.event_count)
-        heapq.heappush(self.event_list, event)
+        self.event_id_counter += 1
+        evt = Event(timestamp, event_type, customer, self.event_id_counter)
+        heapq.heappush(self.events, evt) # auto-sorted by time
 
-    def run(self, max_time: float):
-        while self.event_list and self.clock < max_time:
-            # 1. Pop earliest event
-            current_event = heapq.heappop(self.event_list)
+    def run(self, duration):
+        while self.events and self.clock < duration:
+            evt = heapq.heappop(self.events)
+            self.clock = evt.time
+            self.handle_event(evt)
             
-            # 2. Advance Time
-            self.clock = current_event.time
-            
-            # 3. Process
-            self.handle_event(current_event)
-
-    def handle_event(self, event):
-        raise NotImplementedError("Subclasses must implement handle_event")
+    def handle_event(self, evt):
+        raise NotImplementedError
