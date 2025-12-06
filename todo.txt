@@ -1,3 +1,4 @@
+For implementation 
 1. dynamic lambda for arriving 
 
 2. No menu, Customer always take either coffee or expresso, but not always hot food. Maybe need to add prob for ordering multiple coffee and food?
@@ -22,3 +23,25 @@
 8. maybe stop take customer until certain time.
 
 9. For now I am adding mobile throughput even when they renege. But why renege count is more than throughput....?  
+
+10. readme update
+
+Bug free:
+
+Possible simulation bugs, suggested by results such as:
+1. different methods producing nearly identical performance when they clearly should differ;
+2. performance remaining unchanged under significantly different parameter settings;
+3. unusually large confidence intervals;
+4. results that are difficult to interpret or show no clear performance trends.
+
+- for report 
+
+1. CRN method comparing scenarios
+
+2. Calcualte confidence intervals in the performance evaluation 
+
+3. explain the main flow 
+
+4. following the “Guideline for Writing Report,”
+
+5. Writing issue - unpolished chatgpt in writing. grammatical errors...
