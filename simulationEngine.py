@@ -1,4 +1,4 @@
-from simulationConfig import *
+from SimulationConfig import *
 
 @dataclass(order=True)
 class Event:

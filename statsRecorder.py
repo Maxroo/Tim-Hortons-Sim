@@ -1,5 +1,5 @@
 import numpy as np # Optional, for percentiles. Or use statistics module.
-from simulationConfig import *
+from SimulationConfig import *
 from collections import defaultdict
 from tabulate import tabulate
 
@@ -9,9 +9,12 @@ class Statistics:
         self.time = 0.0
         # --- Financial Counters ---
         self.waste_count = 0  # Food made but not eaten
-        self.total_revenue = 0.0
+        self.total_waste_cost = 0.0  # Total material cost of wasted items
+        self.total_sales_price = 0.0  # Total selling price (revenue from sales)
+        # self.total_revenue = 0.0  # Deprecated: use total_sales_price instead
         self.balk_count = 0
         self.renege_count = 0
+        self.no_seat_count = 0  # Walk-in customers who couldn't find a seat
 
         # count of total arrivals
         self.total_arrivals = { 
@@ -40,7 +43,8 @@ class Statistics:
             'DRIVE_THRU': 0.0,
             'COOK': 0.0,
             'PACKER': 0.0,
-            'ESPRESSO': 0.0
+            'ESPRESSO': 0.0,
+            'BUSSER': 0.0
         }
 
         self.queue_lengths = {
@@ -61,19 +65,33 @@ class Statistics:
     def record_arrival(self, channel):
         self.total_arrivals[channel] += 1
 
-    def record_waste(self):
+    def record_waste(self, customer=None, waste_cost=0.0):
+        """Record wasted items. Records the material cost of wasted items."""
         self.waste_count += 1
+        if waste_cost > 0:
+            self.total_waste_cost += waste_cost
+        elif customer:
+            # Calculate waste cost from customer order if not provided
+            waste_cost = (customer.needs_coffee * self.cfg.cost_coffee +
+                         customer.needs_espresso * self.cfg.cost_espresso +
+                         customer.needs_hot_food * self.cfg.cost_hot_food)
+            self.total_waste_cost += waste_cost
 
-    def record_success(self, channel, wait_time, revenue):
+    def record_success(self, channel, wait_time, sales_price):
         self.throughput[channel] += 1
         self.wait_times[channel].append(wait_time)
-        self.total_revenue += revenue
+        self.total_sales_price += sales_price
+        # self.total_revenue += sales_price  # Keep for backward compatibility
 
     def record_balk(self):
         self.balk_count += 1
 
     def record_renege(self):
         self.renege_count += 1
+    
+    def record_no_seat(self):
+        """Record walk-in customer who couldn't find a seat."""
+        self.no_seat_count += 1
 
     def record_usage(self, resource, duration):
         self.usage[resource] += duration
@@ -110,7 +128,8 @@ class Statistics:
             'COOK': self.cfg.num_cooks,
             'PACKER': self.cfg.num_packers,
             'ESPRESSO': self.cfg.num_espresso_machines,
-            'DRIVE_THRU': self.cfg.num_dt_stations
+            'DRIVE_THRU': self.cfg.num_dt_stations,
+            'BUSSER': self.cfg.num_bussers
         }
         
         for res, minutes in self.usage.items():
@@ -119,14 +138,15 @@ class Statistics:
             report[f'util_{res}'] = util
             
         # D. Waste & Profit
-        # Waste Cost = Material Cost of the food thrown away
-        cost_waste = self.waste_count * (self.cfg.avg_revenue * self.cfg.cost_material_pct)
-        
+        # Waste Cost = Material Cost of the food thrown away (direct cost, not revenue-based)
         report['waste_items'] = self.waste_count
-        report['cost_waste'] = cost_waste
-        report['total_revenue'] = self.total_revenue
+        report['cost_waste'] = self.total_waste_cost
+        report['total_sales_price'] = self.total_sales_price  # Total selling price
+        report['total_profit'] = self.total_sales_price - self.total_waste_cost  # Profit = Sales Price - Waste Cost
+        # report['total_revenue'] = self.total_revenue  # Deprecated: kept for backward compatibility
         report['balk_count'] = self.balk_count
         report['renege_count'] = self.renege_count
+        report['no_seat_count'] = self.no_seat_count  # Walk-in customers who couldn't find a seat
         report['time_simulated'] = self.time
         return report
 

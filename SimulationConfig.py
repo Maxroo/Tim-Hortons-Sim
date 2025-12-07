@@ -10,22 +10,31 @@ from typing import List, Optional, Dict
 class SimulationConfig:
     """Central configuration for Tim Hortons Operations."""
     random_seed: int = 42
+    # Debug flag - set to True to enable debug output
+    debug_mode: bool = False
+    debug_interval: float = 60.0  # Print debug info every N minutes
     # 1. Staffing (Decision Variables)
     num_cashiers: int = 1 # required M/M/1
     num_packers: int = 1 # required M/M/1
     num_dt_stations: int = 1 # required M/M/1
 
     num_cooks: int = 3
+    num_bussers: int = 1               # Staff for cleaning tables
     # 2. Capacity Constraints
     max_drive_thru_queue: int = 10     # Cars
     pickup_shelf_capacity: int = 15    # Bags
     coffee_urn_size: int = 40          # Portions
     num_espresso_machines: int = 3     # Espresso Shots
+    seating_capacity: int = 30         # Number of seats in dining area
     
     # Probabilities for order types
     prob_order_coffee: float = 0.80
     prob_order_espresso: float = 1 - prob_order_coffee 
     prob_order_hot_food: float = 0.15
+    
+    # Quantity distribution (weighted random selection)
+    order_quantities: List[int] = field(default_factory=lambda: [1, 2, 3, 4, 5])  # Possible quantities
+    quantity_weights: List[float] = field(default_factory=lambda: [0.4, 0.3, 0.15, 0.1, 0.05])  # Weights for 1-5 (1 and 2 are most common)
 
     # 3. Timing (Minutes)
     # Average 1rvice times
@@ -35,21 +44,35 @@ class SimulationConfig:
     mean_pack_time: float = 1.0
     mean_espresso_time: float = 2.0
     brew_time: float = 5.0
+    mean_dining_time: float = 15.0     # Average time customers spend eating
+    mean_cleaning_time: float = 2.0   # Average time to clean a table
     
     # Arrivals (Customers per Hour -> Converted to Inter-arrival mins)
-    lambda_walkin: float = 40.0
-    lambda_drivethru: float = 50.0
+    lambda_walkin: float = 20#40.0
+    lambda_drivethru: float =20# 50.0
     lambda_mobile: float = 20.0
     
     # Patience
     mobile_patience: float = 15.0      # Mins before reneging
 
     # 4. Financials
-    avg_revenue: float = 9.50
+    avg_revenue: float = 9.50  # Deprecated: use item prices and costs instead
+    # Item prices (per unit) - selling price
+    price_coffee: float = 2.50      # Selling price per coffee
+    price_espresso: float = 4.00    # Selling price per espresso drink
+    price_hot_food: float = 5.00    # Selling price per hot food item
+    
+    # Item costs (per unit) - material cost
+    cost_coffee: float = 0.75       # Material cost per coffee
+    cost_espresso: float = 1.20     # Material cost per espresso drink
+    cost_hot_food: float = 1.50     # Material cost per hot food item
+    
+    # Revenue (profit) = price - cost (calculated, not stored)
+    
     wage_per_min: float = 16.50 / 60.0 # $16.50/hr
     penalty_balk: float = 5.00
     penalty_renege: float = 10.00
-    cost_material_pct: float = 0.30    # 30% of revenue
+    cost_material_pct: float = 0.30    # Deprecated: use item costs instead
     
     def get_inter_arrival(self, rate_per_hr):
         if rate_per_hr <= 0: return float('inf')
@@ -69,6 +92,8 @@ class EventType(Enum):
     PICKUP = auto()
     BREW_COMPLETE = auto()
     RENEGE_CHECK = auto()
+    DINING_DONE = auto()      # Customer finished eating
+    CLEANING_DONE = auto()    # Table cleaned and ready
 
 @dataclass
 class Customer:
@@ -76,9 +101,9 @@ class Customer:
     channel: Channel
     arrival_time: float
 
-    needs_coffee: bool
-    needs_espresso: bool
-    needs_hot_food: bool
+    needs_coffee: int = 0      # Number of coffee items (0-5)
+    needs_espresso: int = 0    # Number of espresso items (0-5)
+    needs_hot_food: int = 0    # Number of hot food items (0-5)
     # State Tracking
     is_ready: bool = False     # Food is on shelf
     has_reneged: bool = False  # Gave up waiting

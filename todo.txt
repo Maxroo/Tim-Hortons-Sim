@@ -4,6 +4,7 @@ For implementation
 2. No menu, Customer always take either coffee or expresso, but not always hot food. Maybe need to add prob for ordering multiple coffee and food?
     a. It is Use mean revenue instead of actual food profit and waste. change it? ------ 
     b. profit and food/beverage waste
+Note: Done. Customer has different chance to choose 1-5 coffee/expresso/hot foods. In cofig, add the price and cost for each category for sales/cost calculation.
 
 3. Need to record customer queue time, currently I am recording customer system time. Brew time.
 
@@ -19,10 +20,15 @@ For implementation
 6. Dynamic labour cost?
 
 7. wait time avg is unreasonably high, maybe there are some logic error..
+Note: Not really, the reason it is high is that the arrival counts is so much higher than affordable sevice loads.
+I tried to lower the number of customers per hour via config, and the wait time is much lower. This could be recorded
+as an experiment beteen number of customers v.s. affordable service loads. 
 
 8. maybe stop take customer until certain time.
 
 9. For now I am adding mobile throughput even when they renege. But why renege count is more than throughput....?  
+Note: According to my understanding, the throughput is success orders, while the arrival count is mobile customers before renege,
+due to the 15mins tolerance, the renege count is super high. 
 
 10. readme update
 
@@ -45,3 +51,22 @@ Possible simulation bugs, suggested by results such as:
 4. following the “Guideline for Writing Report,”
 
 5. Writing issue - unpolished chatgpt in writing. grammatical errors...
+
+
+Jin's Modification:
+- Order Quantity System
+    Changed needs_coffee, needs_espresso, needs_hot_food from bool to int (0-5)
+    Added weighted random selection for quantities (1-2 more likely than 3-5)
+    Added order_quantities and quantity_weights to SimulationConfig
+- Financial Calculations
+    Added item costs: cost_coffee, cost_espresso, cost_hot_food
+    Replaced fixed avg_revenue with per-order calculations
+    Added calculate_order_price() (selling price)
+    Added calculate_order_cost() (material cost)
+    Updated calculate_order_revenue() to use (price - cost)
+- Fixed duplicate renege recording (added check for has_reneged)
+- Fixed duplicate waste recording in packing and pickup
+- Add debug function 
+- Dining area implementation: 
+    if walkin customer has no table, current logic is leaving restaurant without any penalty,
+    but record the no seating count. 
