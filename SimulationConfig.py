@@ -66,7 +66,7 @@ class SimulationConfig:
     
     # Patience
     mobile_patience: float = 15.0      # Mins before reneging
-    ninety_drive_thru_wait: float = 10.0  # goal 90th percentile <= 10 mins
+    drive_thru_patience: float = 10.0  # goal 90th percentile <= 10 mins
 
     # 4. Financials
     

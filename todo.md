@@ -1,15 +1,8 @@
 For implementation 
 
+2. 90th percentile for drive_thru
 
-
-1. dynamic lambda for arriving 
-
-<del> Busser </del>
-
-<del> 2. No menu, Customer always take either coffee or expresso, but not always hot food. Maybe need to add prob for ordering multiple coffee and food?
-    a. It is Use mean revenue instead of actual food profit and waste. change it? ------ 
-    b. profit and food/beverage waste
-Note: Done. Customer has different chance to choose 1-5 coffee/expresso/hot foods. In cofig, add the price and cost for each category for sales/cost calculation. </del>
+3. prioty queue for drive through and mobile
 
 3. Need to record customer queue time, currently I am recording customer system time. Brew time.
 
@@ -23,17 +16,6 @@ Note: Done. Customer has different chance to choose 1-5 coffee/expresso/hot food
     • Number of toasters or espresso machines
 
 6. Dynamic labour cost? (low prio)
-
-<del> wait time avg is unreasonably high, maybe there are some logic error..
-Note: Not really, the reason it is high is that the arrival counts is so much higher than affordable sevice loads.
-I tried to lower the number of customers per hour via config, and the wait time is much lower. This could be recorded
-as an experiment beteen number of customers v.s. affordable service loads. </del>
-
-8. maybe stop take customer half an hour before closing.
-
-<del> 9. For now I am adding mobile throughput even when they renege. But why renege count is more than throughput....?  
-Note: According to my understanding, the throughput is success orders, while the arrival count is mobile customers before renege,
-due to the 15mins tolerance, the renege count is super high.  </del>
 
 10. readme update
 

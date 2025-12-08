@@ -132,6 +132,7 @@ class TimHortonsSim(SimEngine):
             
             # Enter the Lane
             self.q_drivethru.append(customer)
+            self.schedule(self.cfg.drive_thru_patience, EventType.RENEGE_CHECK, customer)
             self.try_start_drivethru()
             self.stats.record_arrival(Channel.DRIVE_THRU)
 
@@ -148,6 +149,7 @@ class TimHortonsSim(SimEngine):
             # Enter the store line
             self.q_walkin.append(customer)
             self.try_start_walkin()
+            self.stats.record_arrival(Channel.WALK_IN)
 
 
     # ==========================
@@ -164,7 +166,7 @@ class TimHortonsSim(SimEngine):
             duration = random.expovariate(1.0 / self.cfg.mean_cashier_time)
             self.stats.record_usage('CASHIER', duration)
             self.schedule(duration, EventType.PAYMENT_DONE, cust)
-            self.stats.record_arrival(Channel.WALK_IN)
+            
 
     def process_walkin_done(self, customer):
         self.busy_cashiers -= 1
@@ -488,8 +490,8 @@ class TimHortonsSim(SimEngine):
     def end(self):
         self.stats.record_time(self.clock)
         # record customer still in queue 
-        self.stats.record_queue_length('CASHIER', len(self.q_walkin))
-        self.stats.record_queue_length('DRIVE_THRU', len(self.q_drivethru))
-        self.stats.record_queue_length('KITCHEN', len(self.q_kitchen))
-        self.stats.record_queue_length('PACKING', len(self.q_packing))
+        self.stats.record_queue_length('Walkin queue', len(self.q_walkin))
+        self.stats.record_queue_length('Drive-thru queue', len(self.q_drivethru))
+        self.stats.record_queue_length('Kitchen queue', len(self.q_kitchen))
+        self.stats.record_queue_length('Packing queue', len(self.q_packing))
         self.stats.record_labour_costs(self.calcualte_labour_costs())

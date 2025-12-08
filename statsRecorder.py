@@ -55,11 +55,7 @@ class Statistics:
             'BUSSER': 0.0
         }
 
-        self.queue_lengths = {
-            'CASHIER': 0, 
-            'DRIVE_THRU': 0,
-            'KITCHEN': 0,
-            'PACKING': 0    
+        self.queue_lengths = {  
         }
 
         # --- Resource Usage (Accumulators) ---
@@ -130,10 +126,10 @@ class Statistics:
         for channel, times in self.wait_times.items():
             if not times:
                 report[f'wait_{channel.name}_avg'] = 0
-                report[f'wait_{channel.name}_p95'] = 0
+                report[f'wait_{channel.name}_p90'] = 0
             else:
                 report[f'wait_{channel.name}_avg'] = np.mean(times)
-                report[f'wait_{channel.name}_p95'] = np.percentile(times, 95) # Tail
+                report[f'wait_{channel.name}_p90'] = np.percentile(times, 90) # Tail
         
         # C. Utilization (Busy Time / (Duration * Capacity))
         # Note: You pass capacity in from Config
