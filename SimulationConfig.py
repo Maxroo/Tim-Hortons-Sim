@@ -42,21 +42,37 @@ class SimulationConfig:
     mean_dt_order_time: float = 1.0
     mean_kitchen_time: float = 3.5
     mean_pack_time: float = 1.0
-    mean_espresso_time: float = 2.0
+    mean_espresso_time: float = 0.5 
     brew_time: float = 5.0
     mean_dining_time: float = 15.0     # Average time customers spend eating
     mean_cleaning_time: float = 2.0   # Average time to clean a table
     
     # Arrivals (Customers per Hour -> Converted to Inter-arrival mins)
-    lambda_walkin: float = 20#40.0
+    # store hours
+    opening_time: float = 6.0   # Store opening time (6 AM)
+    closing_time: float = 21.0  # Store closing time (9 PM) 
+    last_order_time: float = closing_time - 0.5  # Last order accepted at 8:30 PM
+    # arrival rates
+    peak_hours = [(7,9), (11,13)]  # 7-9am, 11am-1pm
+    # peak should be 140 per hour
+    # Normal 80 per hour
+    lambda_walkin: float = 40#40.0
     lambda_drivethru: float =20# 50.0
     lambda_mobile: float = 20.0
     
+    peak_lambda_walkin: float = 70.0
+    peak_lambda_drivethru: float = 50.0
+    peak_lambda_mobile: float = 20.0
+    
     # Patience
     mobile_patience: float = 15.0      # Mins before reneging
+    ninety_drive_thru_wait: float = 10.0  # goal 90th percentile <= 10 mins
 
     # 4. Financials
-    avg_revenue: float = 9.50  # Deprecated: use item prices and costs instead
+    
+    # staff wages
+    labour_cost_per_hour: float = 18.00  # Average labour cost per hour
+    
     # Item prices (per unit) - selling price
     price_coffee: float = 2.50      # Selling price per coffee
     price_espresso: float = 4.00    # Selling price per espresso drink
@@ -72,6 +88,7 @@ class SimulationConfig:
     wage_per_min: float = 16.50 / 60.0 # $16.50/hr
     penalty_balk: float = 5.00
     penalty_renege: float = 10.00
+    penalty_percentage: float = 0.1  # Penalty for abandoned orders (% of order revenue)
     cost_material_pct: float = 0.30    # Deprecated: use item costs instead
     
     def get_inter_arrival(self, rate_per_hr):

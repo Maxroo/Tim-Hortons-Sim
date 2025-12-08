@@ -2,6 +2,12 @@ import numpy as np # Optional, for percentiles. Or use statistics module.
 from SimulationConfig import *
 from collections import defaultdict
 from tabulate import tabulate
+import sys
+import io
+
+# Fix Unicode encoding issues on Windows
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 class Statistics:
     def __init__(self, config):
@@ -15,6 +21,8 @@ class Statistics:
         self.balk_count = 0
         self.renege_count = 0
         self.no_seat_count = 0  # Walk-in customers who couldn't find a seat
+        self.total_labour_costs = 0.0  # Total labour costs incurred
+        self.total_penalties = 0.0  # Total penalties from balking/reneging
 
         # count of total arrivals
         self.total_arrivals = { 
@@ -58,6 +66,12 @@ class Statistics:
         # We track total minutes resources were active
         self.busy_minutes_cooks = 0.0
         self.busy_minutes_espresso = 0.0
+    
+    def record_penalties(self, penalties):
+        self.total_penalties += penalties
+    
+    def record_labour_costs(self, costs):
+        self.total_labour_costs = costs
     
     def record_queue_length(self, queue_name, length):
         self.queue_lengths[queue_name] = length
@@ -141,13 +155,15 @@ class Statistics:
         # Waste Cost = Material Cost of the food thrown away (direct cost, not revenue-based)
         report['waste_items'] = self.waste_count
         report['cost_waste'] = self.total_waste_cost
-        report['total_sales_price'] = self.total_sales_price  # Total selling price
-        report['total_profit'] = self.total_sales_price - self.total_waste_cost  # Profit = Sales Price - Waste Cost
         # report['total_revenue'] = self.total_revenue  # Deprecated: kept for backward compatibility
         report['balk_count'] = self.balk_count
         report['renege_count'] = self.renege_count
         report['no_seat_count'] = self.no_seat_count  # Walk-in customers who couldn't find a seat
         report['time_simulated'] = self.time
+        report['total_labour_costs'] = self.total_labour_costs
+        report['total_sales_price'] = self.total_sales_price  # Total selling price
+        report['total_penalties'] = self.total_penalties
+        report['total_profit'] = self.total_sales_price - self.total_waste_cost - self.total_labour_costs - self.total_penalties  # Profit = Sales Price - Waste Cost - Labour Costs
         return report
 
     def print_table_report(self, report):

@@ -213,6 +213,8 @@ class TimHortonsSim(SimEngine):
             # Customer already left, remove order
             # Has not started making yet, so don't record waste or success
             self.q_kitchen.popleft()
+            possible_revenue = self.calculate_order_revenue(cust)
+            self.stats.record_penalties(possible_revenue * self.cfg.penalty_percentage)
             self.try_start_kitchen() # Check next order
             return
         
@@ -438,12 +440,20 @@ class TimHortonsSim(SimEngine):
     # --- Utility ---
     def schedule_next_arrival(self, channel):
         rate = 0
-        if channel == Channel.WALK_IN: rate = self.cfg.lambda_walkin
-        elif channel == Channel.DRIVE_THRU: rate = self.cfg.lambda_drivethru
-        elif channel == Channel.MOBILE: rate = self.cfg.lambda_mobile
-        
+        # determine peak or normal rate
+        current_hour = int(self.clock // 60) + self.cfg.opening_time
+        if current_hour > self.cfg.last_order_time:
+            return  # No more arrivals after last order time
+        if any(start <= current_hour < end for start, end in self.cfg.peak_hours):
+            if channel == Channel.WALK_IN: rate = self.cfg.peak_lambda_walkin
+            elif channel == Channel.DRIVE_THRU: rate = self.cfg.peak_lambda_drivethru
+            elif channel == Channel.MOBILE: rate = self.cfg.peak_lambda_mobile
+        else:
+            if channel == Channel.WALK_IN: rate = self.cfg.lambda_walkin
+            elif channel == Channel.DRIVE_THRU: rate = self.cfg.lambda_drivethru
+            elif channel == Channel.MOBILE: rate = self.cfg.lambda_mobile
         delay = self.cfg.get_inter_arrival(rate)
-        
+    
         # Create new customer
         new_id = self.customer_counter + 1
         self.customer_counter = new_id
@@ -461,6 +471,19 @@ class TimHortonsSim(SimEngine):
 
         new_cust = Customer(new_id, channel, self.clock + delay, needs_coffee, needs_espresso, needs_hot_food)
         self.schedule(delay, EventType.ARRIVAL, new_cust)
+    
+    def calcualte_labour_costs(self):
+        """Calculate total labour costs based on resource usage and wage rates."""
+        total_minutes = self.clock
+        labour_cost = total_minutes / 60.0 * self.cfg.labour_cost_per_hour * (
+            self.cfg.num_cashiers +
+            self.cfg.num_dt_stations +
+            self.cfg.num_cooks +
+            self.cfg.num_packers +
+            self.cfg.num_bussers
+        )
+        return labour_cost
+    
 
     def end(self):
         self.stats.record_time(self.clock)
@@ -469,3 +492,4 @@ class TimHortonsSim(SimEngine):
         self.stats.record_queue_length('DRIVE_THRU', len(self.q_drivethru))
         self.stats.record_queue_length('KITCHEN', len(self.q_kitchen))
         self.stats.record_queue_length('PACKING', len(self.q_packing))
+        self.stats.record_labour_costs(self.calcualte_labour_costs())

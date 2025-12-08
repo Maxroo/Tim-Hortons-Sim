@@ -28,6 +28,10 @@ README.md: This file.
 # Configuration & Experiments
 All simulation parameters are located in the SimulationConfig class. You can modify these values to test different scenarios.
 
+- Tim hortons opens from 7am - 10pm 
+        - sim clock = 0 when its 7am
+        - sim clock = 
+
 Decision Variables:
 num_cashiers = 1          # Front counter staff
 num_cooks = 3             # Kitchen staff
