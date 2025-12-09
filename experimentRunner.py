@@ -83,7 +83,7 @@ class ExperimentRunner:
         
         return report
     
-    def run_experiment(self, output_file='experiment_results.csv', verbose=True):
+    def run_experiment(self, output_file, verbose=True):
         """
         Run all scenarios with multiple replications.
         
@@ -238,9 +238,9 @@ def example_experiment():
     
     # Define variables to test
     variables = {
-        'num_cooks': [3, 4, 5],
+        'num_cooks': [3],
         'num_packers': [1, 2],
-        'lambda_walkin': [20, 30]  # Reduced for faster testing
+        'lambda_walkin': [20]  # Reduced for faster testing
     }
     
     # Define experiment
@@ -252,12 +252,12 @@ def example_experiment():
     
     # Run experiment
     runner.run_experiment(
-        output_file='experiment_results.csv',
+        output_file='example_experiment_results.csv',
         verbose=True
     )
     
     # Also save as JSON
-    runner.save_results_json('experiment_results.json')
+    runner.save_results_json('example_experiment_results.json')
     
     return runner
 
@@ -331,5 +331,5 @@ if __name__ == "__main__":
         num_replications=5,  # More replications for better statistics
         sim_duration=900
     )
-    runner.run_experiment('experiment_results.csv')
+    runner.run_experiment('experiment_results_v2.csv')
 
