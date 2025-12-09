@@ -187,7 +187,7 @@ class Statistics:
             'ESPRESSO': self.cfg.num_espresso_machines,
             'DRIVE_THRU': self.cfg.num_dt_stations,
             'BUSSER': self.cfg.num_bussers,
-            'BREW': 1
+            'BREW': self.cfg.num_coffee_urns
         }
         
         for res, minutes in self.usage.items():

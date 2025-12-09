@@ -297,6 +297,7 @@ if __name__ == "__main__":
             # 'mean_pack_time': [0.8, 1.0, 1.2],         # Packing time
             # 'mean_espresso_time': [0.3, 0.5],     # Espresso making time
             'brew_time': [5.0, 8.0],              # Coffee brewing time
+            'num_coffee_urns': [1, 2],          # Number of coffee urns
             # 'mean_dining_time': [12.0, 15.0, 18.0],    # Customer dining time
             # 'mean_cleaning_time': [1.5, 2.0, 2.5],     # Table cleaning time
             
