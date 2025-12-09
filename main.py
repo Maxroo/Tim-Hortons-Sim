@@ -7,7 +7,7 @@ def run_scenario():
     # Enable debug mode to see queue states
     config.debug_mode = True  # Set to False to disable debug output
     config.debug_interval = 30.0  # Print every 30 minutes
-    config.priority_packing = False
+    config.priority_packing = True
     # 2. Init Simulation
     sim = TimHortonsSim(config)
     

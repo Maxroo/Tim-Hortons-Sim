@@ -205,6 +205,7 @@ class Statistics:
         report['balk_count'] = self.balk_count
 
         report['renege_count'] = self.renege_count
+        report['renege_percentage'] = self.renege_count / report['arrival_total']
         report['renege_breakdown'] = self.renege
 
         report['no_seat_count'] = self.no_seat_count  # Walk-in customers who couldn't find a seat

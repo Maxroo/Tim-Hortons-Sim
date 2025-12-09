@@ -15,7 +15,7 @@ class SimulationConfig:
     debug_interval: float = 60.0  # Print debug info every N minutes
     
     # Packing Priority Policy
-    priority_packing: bool = True  # If True: Walk-in and Drive-thru immediate pickup, Mobile has lag
+    priority_packing: bool = False  # If True: Walk-in and Drive-thru immediate pickup, Mobile has lag
                                    # If False: Normal FIFO order (all channels same)
     
     # Simulation Control
