@@ -53,10 +53,26 @@ class Statistics:
             'COOK': 0.0,
             'PACKER': 0.0,
             'ESPRESSO': 0.0,
-            'BUSSER': 0.0
+            'BUSSER': 0.0,
+            'BREW': 0.0
         }
 
         self.queue_lengths = {  
+        }
+
+        self.renege = {
+            'kitchen': 0,
+            'packing': 0,
+            'pickup': 0
+        }
+
+        # Per-order timing snapshots
+        self.order_timings = {
+            'wait_to_kitchen_done': 0.0,
+            'wait_to_packing_done': 0.0,
+            'wait_to_pickup': 0.0,
+            'queue_wait_kitchen': 0.0,
+            'queue_wait_packing': 0.0
         }
 
         # --- Resource Usage (Accumulators) ---
@@ -110,7 +126,11 @@ class Statistics:
         if current_time is None or not self.is_warm_up(current_time):
             self.balk_count += 1
 
-    def record_renege(self, current_time=None):
+    def record_renege(self, stage, current_time=None):
+        if current_time is None or not self.is_warm_up(current_time):
+            self.renege[stage] += 1
+
+    def record_renege_count(self, current_time=None):
         if current_time is None or not self.is_warm_up(current_time):
             self.renege_count += 1
     
@@ -119,11 +139,22 @@ class Statistics:
         if current_time is None or not self.is_warm_up(current_time):
             self.no_seat_count += 1
 
-    def record_usage(self, resource, duration):
+    def record_usage(self, resource, duration, current_time=None):
+        if current_time is not None and self.is_warm_up(current_time):
+            return  # Don't record during warm-up
         self.usage[resource] += duration
 
     def record_time(self, time):
         self.time = time
+
+    def record_order_timing(self, cust):
+        """Capture per-order timing deltas; checkpoints may be missing."""
+        self.order_timings['wait_to_kitchen_done'] += cust.t_kitchen_done - cust.t_enter_kitchen if cust.t_kitchen_done is not None and cust.t_enter_kitchen is not None else 0
+        self.order_timings['wait_to_packing_done'] += cust.t_packing_done - cust.t_enter_packing if cust.t_packing_done is not None and cust.t_enter_packing is not None else 0
+        self.order_timings['wait_to_pickup'] += cust.t_pickup - cust.t_packing_done if cust.t_pickup is not None and cust.t_packing_done is not None else 0
+        self.order_timings['queue_wait_kitchen'] += cust.t_kitchen_start - cust.t_enter_kitchen if cust.t_kitchen_start is not None and cust.t_enter_kitchen is not None else 0
+        self.order_timings['queue_wait_packing'] += cust.t_packing_start - cust.t_enter_packing if cust.t_packing_start is not None and cust.t_enter_packing is not None else 0
+
 
     def generate_report(self, sim_duration):
         report = {}
@@ -155,13 +186,16 @@ class Statistics:
             'PACKER': self.cfg.num_packers,
             'ESPRESSO': self.cfg.num_espresso_machines,
             'DRIVE_THRU': self.cfg.num_dt_stations,
-            'BUSSER': self.cfg.num_bussers
+            'BUSSER': self.cfg.num_bussers,
+            'BREW': 1
         }
         
         for res, minutes in self.usage.items():
             total_available_minutes = sim_duration * caps[res]
             util = minutes / total_available_minutes if total_available_minutes > 0 else 0
             report[f'util_{res}'] = util
+        
+
             
         # D. Waste & Profit
         # Waste Cost = Material Cost of the food thrown away (direct cost, not revenue-based)
@@ -169,13 +203,17 @@ class Statistics:
         report['cost_waste'] = self.total_waste_cost
         # report['total_revenue'] = self.total_revenue  # Deprecated: kept for backward compatibility
         report['balk_count'] = self.balk_count
+
         report['renege_count'] = self.renege_count
+        report['renege_breakdown'] = self.renege
+
         report['no_seat_count'] = self.no_seat_count  # Walk-in customers who couldn't find a seat
         report['time_simulated'] = self.time
         report['total_labour_costs'] = self.total_labour_costs
         report['total_sales_price'] = self.total_sales_price  # Total selling price
         report['total_penalties'] = self.total_penalties
         report['total_profit'] = self.total_sales_price - self.total_waste_cost - self.total_labour_costs - self.total_penalties  # Profit = Sales Price - Waste Cost - Labour Costs
+        report['order_timings'] = self.order_timings
         return report
 
     def print_table_report(self, report):

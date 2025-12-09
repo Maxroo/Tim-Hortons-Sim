@@ -20,10 +20,9 @@ class SimulationConfig:
     
     # Simulation Control
     warm_up_period: float = 30.0  # Warm-up period in minutes (data not recorded)
-    stop_accepting_orders_before_end: float = 10.0  # Stop accepting new orders N minutes before simulation ends
     
     # 1. Staffing (Decision Variables)
-    num_cashiers: int = 1 # required M/M/1
+    num_cashiers: int = 2 # required M/M/1
     num_packers: int = 1 # required M/M/1
     num_dt_stations: int = 1 # required M/M/1
 
@@ -32,7 +31,8 @@ class SimulationConfig:
     # 2. Capacity Constraints
     max_drive_thru_queue: int = 10     # Cars
     pickup_shelf_capacity: int = 15    # Bags
-    coffee_urn_size: int = 40          # Portions
+    coffee_urn_size: int = 40          # Portions per urn
+    num_coffee_urns: int = 2           # Number of coffee urns
     num_espresso_machines: int = 3     # Espresso Shots
     seating_capacity: int = 30         # Number of seats in dining area
     
@@ -50,7 +50,7 @@ class SimulationConfig:
     mean_cashier_time: float = 1.5
     mean_dt_order_time: float = 1.0
     mean_kitchen_time: float = 3.5
-    mean_pack_time: float = 1.0
+    mean_pack_time: float = 0.5
     mean_espresso_time: float = 0.5 
     brew_time: float = 5.0
     mean_dining_time: float = 15.0     # Average time customers spend eating
@@ -69,14 +69,14 @@ class SimulationConfig:
     lambda_drivethru: float =20# 50.0
     lambda_mobile: float = 20.0
     
-    peak_lambda_walkin: float = 70.0
+    peak_lambda_walkin: float = 60.0
     peak_lambda_drivethru: float = 50.0
-    peak_lambda_mobile: float = 20.0
+    peak_lambda_mobile: float = 30.0
     
     # Patience
-    mobile_patience: float = 15.0      # Mins before reneging
+    mobile_patience: float = 30.0      # Mins before reneging
     drive_thru_patience: float = 10.0  # goal 90th percentile <= 10 mins
-
+    walkin_patience: float = 30.0      # Mins before reneging
     # 4. Financials
     
     # staff wages
@@ -134,3 +134,11 @@ class Customer:
     is_ready: bool = False     # Food is on shelf
     has_reneged: bool = False  # Gave up waiting
     has_balked: bool = False   # Never entered
+    # Timing checkpoints
+    t_enter_kitchen: Optional[float] = None
+    t_kitchen_start: Optional[float] = None
+    t_kitchen_done: Optional[float] = None
+    t_enter_packing: Optional[float] = None
+    t_packing_start: Optional[float] = None
+    t_packing_done: Optional[float] = None
+    t_pickup: Optional[float] = None
