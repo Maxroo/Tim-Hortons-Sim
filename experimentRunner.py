@@ -263,8 +263,8 @@ def example_experiment():
 
 
 if __name__ == "__main__":
-    runner = example_experiment()
     
+    runner = ExperimentRunner()
     
     runner.define_experiment(
         variables_dict={
@@ -331,5 +331,5 @@ if __name__ == "__main__":
         num_replications=5,  # More replications for better statistics
         sim_duration=900
     )
-    runner.run_experiment('experiment_results_v3.csv')
+    runner.run_experiment('experiment_results_v4.csv')
 

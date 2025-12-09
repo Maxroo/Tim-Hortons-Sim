@@ -26,8 +26,8 @@ class TimHortonsSim(SimEngine):
         
         # --- Complex Resources ---
         # Coffee urns tracked independently so one empty urn doesn't block others
-        self.urn_levels = [self.cfg.coffee_urn_size, self.cfg.coffee_urn_size]
-        self.is_brewing = [False, False]
+        self.urn_levels = [self.cfg.coffee_urn_size] * self.cfg.num_coffee_urns
+        self.is_brewing = [False] * self.cfg.num_coffee_urns
         self.shelf_occupancy = 0
         self.seating_occupancy = 0  # Number of occupied seats
         self.dirty_tables = deque()  # Queue of tables waiting to be cleaned
@@ -122,7 +122,7 @@ class TimHortonsSim(SimEngine):
         elif evt.type == EventType.DINING_DONE:
             self.process_dining_done(evt.customer)
         elif evt.type == EventType.CLEANING_DONE:
-            self.process_cleaning_done()
+            self.process_cleaning_done(evt.customer)
 
     # ==========================
     # 1. ARRIVAL LOGIC
@@ -243,24 +243,30 @@ class TimHortonsSim(SimEngine):
         
         # Case B: Brewed Coffee Order (Needs Liquid)
         elif cust.needs_coffee > 0:
-            #check if the first urn has enough coffee
-            if self.urn_levels[0] < cust.needs_coffee:
-                if not self.is_brewing[0]:
-                    self.start_brewing(0)
-            else:
-                if self.urn_levels[0] - cust.needs_coffee == 0:
-                    if not self.is_brewing[0]:
-                        self.start_brewing(0)
-                skip # the first urn has enough coffee
-            #else check if the first and second urn has enough coffee
-            if self.urn_levels[1] + self.urn_levels[0] < cust.needs_coffee:
-                if not self.is_brewing[1]:
-                    self.start_brewing(1)
-                return # BLOCKED: Cook is free, but Coffees are insufficient in both urns
-            else:
-                if self.urn_levels[1] - cust.needs_coffee <= 0:
-                    if not self.is_brewing[1]:
-                        self.start_brewing(1)
+            # Calculate total available coffee across all urns
+            total_available = sum(self.urn_levels)
+            
+            # Check if we have enough coffee in total
+            if total_available < cust.needs_coffee:
+                # Not enough coffee in all urns - start brewing on any available urn
+                for urn_idx in range(self.cfg.num_coffee_urns):
+                    if not self.is_brewing[urn_idx]:
+                        self.start_brewing(urn_idx)
+                        break  # Start brewing on first available urn
+                return  # BLOCKED: Cook is free, but Coffees are insufficient in all urns
+            
+            # We have enough coffee, but check if we need to start brewing preventively
+            # Check each urn and start brewing if it will be empty or nearly empty after this order
+            remaining_needs = cust.needs_coffee
+            for urn_idx in range(self.cfg.num_coffee_urns):
+                if remaining_needs <= 0:
+                    break
+                if self.urn_levels[urn_idx] > 0:
+                    # If this urn will be used up or nearly empty, start brewing
+                    if self.urn_levels[urn_idx] <= remaining_needs:
+                        if not self.is_brewing[urn_idx]:
+                            self.start_brewing(urn_idx)
+                    remaining_needs -= min(remaining_needs, self.urn_levels[urn_idx])
             
 
         # 3. SEIZE RESOURCES (If we survived the checks)
@@ -280,10 +286,16 @@ class TimHortonsSim(SimEngine):
             self.stats.record_usage('ESPRESSO', espressoDuration, self.clock)
 
         if cust.needs_coffee > 0:
-            self.urn_levels[0] -= cust.needs_coffee
-            if self.urn_levels[0] < 0:
-                self.urn_levels[1] += self.urn_levels[0] # use the second urn to make up the difference
-                self.urn_levels[0] = 0
+            # Use coffee from urns in order, starting from the first urn
+            remaining_needs = cust.needs_coffee
+            for urn_idx in range(self.cfg.num_coffee_urns):
+                if remaining_needs <= 0:
+                    break
+                if self.urn_levels[urn_idx] > 0:
+                    # Take as much as needed from this urn
+                    taken = min(remaining_needs, self.urn_levels[urn_idx])
+                    self.urn_levels[urn_idx] -= taken
+                    remaining_needs -= taken
             # Pouring time scales with quantity (10sec per coffee)
             pourDuration = 0.167 * cust.needs_coffee
             duration += pourDuration
@@ -384,15 +396,26 @@ class TimHortonsSim(SimEngine):
         
         customer.t_packing_done = self.clock
         
+        # Check shelf capacity before putting on shelf
+        if self.shelf_occupancy >= self.cfg.pickup_shelf_capacity:
+            # Shelf is full, wait for pickup before scheduling this order's pickup
+            # This should not happen if try_start_packing check works, but add safety check
+            pass
+        
         # Put on shelf
         self.shelf_occupancy += 1
         customer.is_ready = True
         
-    
-            # Priority mode: Walk-in and Drive-thru immediate, Mobile has lag
-        lag = 0
-        if customer.channel == Channel.MOBILE:
-            lag = random.uniform(1, 3)
+        # Priority mode: Walk-in and Drive-thru immediate, Mobile has lag
+        if self.cfg.priority_packing:
+            # Priority mode: Walk-in and Drive-thru immediate pickup, Mobile has lag
+            if customer.channel == Channel.MOBILE:
+                lag = random.uniform(1, 3)
+            else:
+                lag = 0  # Walk-in and Drive-thru immediate
+        else:
+            # Normal mode: All channels have some pickup delay (simulating customer arrival to pickup)
+            lag = random.uniform(0.5, 2.0)  # All channels wait a bit before pickup
         
         self.schedule(lag, EventType.PICKUP, customer)
         self.try_start_packing() # Packer takes next
@@ -473,9 +496,7 @@ class TimHortonsSim(SimEngine):
     # ==========================
     def process_dining_done(self, customer):
         """Customer finished eating, leaves the table."""
-        # Free the seat
-        self.seating_occupancy -= 1
-        
+        # Customer leaves, but seat is still occupied until table is cleaned
         # Table needs to be cleaned before reuse
         self.dirty_tables.append(customer)  # Track which table needs cleaning
         self.try_start_cleaning()
@@ -494,12 +515,13 @@ class TimHortonsSim(SimEngine):
         
         cleaning_duration = random.expovariate(1.0 / self.cfg.mean_cleaning_time)
         self.stats.record_usage('BUSSER', cleaning_duration, self.clock)
-        self.schedule(cleaning_duration, EventType.CLEANING_DONE)
+        self.schedule(cleaning_duration, EventType.CLEANING_DONE, table)
     
-    def process_cleaning_done(self):
+    def process_cleaning_done(self, customer):
         """Table cleaning completed, table is now available."""
         self.busy_bussers -= 1
-        # Table is now clean and available (seating_occupancy already decremented)
+        # Now free the seat - table is clean and available for next customer
+        self.seating_occupancy -= 1
         # Try to clean next dirty table
         self.try_start_cleaning()
     
