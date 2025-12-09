@@ -33,8 +33,19 @@ class TimHortonsSim(SimEngine):
         # --- Stats ---
         self.stats = Statistics(config)
         
+        # --- Simulation Control ---
+        self.sim_duration = None  # Will be set when run() is called
+        self.stop_accepting_time = None  # Time to stop accepting new orders
+        
         # --- Debug ---
         self.last_debug_time = 0.0  # Track last debug output time
+    
+    def run(self, duration):
+        """Override run() to set simulation duration and stop accepting time."""
+        self.sim_duration = duration
+        self.stop_accepting_time = duration - self.cfg.stop_accepting_orders_before_end
+        # Call parent run method
+        super().run(duration)
 
     # ==========================
     # DEBUG FUNCTION 
@@ -117,7 +128,9 @@ class TimHortonsSim(SimEngine):
     # 1. ARRIVAL LOGIC
     # ==========================
     def process_arrival(self, customer):
-        self.schedule_next_arrival(customer.channel)
+        # Only schedule next arrival if we're still accepting orders
+        if self.stop_accepting_time is None or self.clock < self.stop_accepting_time:
+            self.schedule_next_arrival(customer.channel)
 
         # --- A. DRIVE-THRU LOGIC ---
         if customer.channel == Channel.DRIVE_THRU:
@@ -127,14 +140,14 @@ class TimHortonsSim(SimEngine):
             
             if cars_in_lane >= self.cfg.max_drive_thru_queue:
                 customer.has_balked = True
-                self.stats.record_balk()
+                self.stats.record_balk(self.clock)
                 return 
             
             # Enter the Lane
             self.q_drivethru.append(customer)
             self.schedule(self.cfg.drive_thru_patience, EventType.RENEGE_CHECK, customer)
             self.try_start_drivethru()
-            self.stats.record_arrival(Channel.DRIVE_THRU)
+            self.stats.record_arrival(Channel.DRIVE_THRU, self.clock)
 
         # --- B. MOBILE LOGIC ---
         elif customer.channel == Channel.MOBILE:
@@ -142,14 +155,14 @@ class TimHortonsSim(SimEngine):
             self.q_kitchen.append(customer)
             self.schedule(self.cfg.mobile_patience, EventType.RENEGE_CHECK, customer)
             self.try_start_kitchen()
-            self.stats.record_arrival(Channel.MOBILE)
+            self.stats.record_arrival(Channel.MOBILE, self.clock)
 
         # --- C. WALK-IN LOGIC ---
         elif customer.channel == Channel.WALK_IN:
             # Enter the store line
             self.q_walkin.append(customer)
             self.try_start_walkin()
-            self.stats.record_arrival(Channel.WALK_IN)
+            self.stats.record_arrival(Channel.WALK_IN, self.clock)
 
 
     # ==========================
@@ -185,7 +198,8 @@ class TimHortonsSim(SimEngine):
             duration = random.expovariate(1.0 / self.cfg.mean_dt_order_time)
             self.stats.record_usage('DRIVE_THRU', duration)
             self.schedule(duration, EventType.PAYMENT_DONE, cust)
-            self.stats.record_arrival(Channel.DRIVE_THRU)
+            # Note: arrival already recorded in process_arrival, this is just for tracking
+            # self.stats.record_arrival(Channel.DRIVE_THRU, self.clock)
 
     def process_drivethru_done(self, customer):
         self.busy_dt_stations -= 1
@@ -216,7 +230,7 @@ class TimHortonsSim(SimEngine):
             # Has not started making yet, so don't record waste or success
             self.q_kitchen.popleft()
             possible_revenue = self.calculate_order_revenue(cust)
-            self.stats.record_penalties(possible_revenue * self.cfg.penalty_percentage)
+            self.stats.record_penalties(possible_revenue * self.cfg.penalty_percentage, self.clock)
             self.try_start_kitchen() # Check next order
             return
         
@@ -278,8 +292,43 @@ class TimHortonsSim(SimEngine):
         # 3. Pull next order
         self.try_start_kitchen()
 
-        # 4. Move to Packing
-        self.q_packing.append(customer)
+        # 4. Move to Packing with Priority
+        if self.cfg.priority_packing:
+            # Priority mode: Walk-in and Drive-thru go to front, Mobile goes to back
+            if customer.channel == Channel.MOBILE:
+                # Mobile orders go to the end (lowest priority)
+                self.q_packing.append(customer)
+            else:
+                # Walk-in and Drive-thru go to the front (highest priority)
+                # Find the position after the last non-mobile order
+                insert_pos = 0
+                for i, existing_cust in enumerate(self.q_packing):
+                    if existing_cust.channel != Channel.MOBILE:
+                        insert_pos = i + 1
+                    else:
+                        break
+                # Insert at the position (after all non-mobile orders, before mobile orders)
+                # Since deque doesn't support insert, we need to use a different approach
+                # Convert to list, insert, convert back, or use a different data structure
+                # For now, we'll use a simple approach: append non-mobile to front by using extendleft in reverse
+                # Actually, better: find first mobile position and insert before it
+                mobile_pos = None
+                for i, existing_cust in enumerate(self.q_packing):
+                    if existing_cust.channel == Channel.MOBILE:
+                        mobile_pos = i
+                        break
+                if mobile_pos is not None:
+                    # Insert before first mobile order
+                    temp_list = list(self.q_packing)
+                    temp_list.insert(mobile_pos, customer)
+                    self.q_packing = deque(temp_list)
+                else:
+                    # No mobile orders, just append
+                    self.q_packing.append(customer)
+        else:
+            # Normal FIFO mode: all channels same priority
+            self.q_packing.append(customer)
+        
         self.try_start_packing()
 
     def start_brewing(self):
@@ -308,7 +357,7 @@ class TimHortonsSim(SimEngine):
                 # Customer reneged while in packing queue (before packing started)
                 # Food is already made, so record waste
                 waste_cost = self.calculate_order_cost(cust)
-                self.stats.record_waste(cust, waste_cost)
+                self.stats.record_waste(cust, waste_cost, self.clock)
                 # Don't pack it, just free the shelf space (food was made but not packed)
                 self.try_start_packing()
                 return
@@ -316,7 +365,7 @@ class TimHortonsSim(SimEngine):
             # Check again if customer reneged (might have reneged during wait)
             if cust.has_reneged:
                 waste_cost = self.calculate_order_cost(cust)
-                self.stats.record_waste(cust, waste_cost)
+                self.stats.record_waste(cust, waste_cost, self.clock)
                 self.try_start_packing()
                 return
             
@@ -332,11 +381,11 @@ class TimHortonsSim(SimEngine):
         self.shelf_occupancy += 1
         customer.is_ready = True
         
-        # Schedule Pickup
-        # Walk-in: Immediate. Drive-thru: Immediate. Mobile: Random 1 -3 lag.
+    
+            # Priority mode: Walk-in and Drive-thru immediate, Mobile has lag
         lag = 0
-        
-        if customer.channel == Channel.MOBILE: lag = random.uniform(1, 3)
+        if customer.channel == Channel.MOBILE:
+            lag = random.uniform(1, 3)
         
         self.schedule(lag, EventType.PICKUP, customer)
         self.try_start_packing() # Packer takes next
@@ -353,7 +402,7 @@ class TimHortonsSim(SimEngine):
         if customer.has_reneged:
             # The customer left long ago. The food is cold.
             waste_cost = self.calculate_order_cost(customer)
-            self.stats.record_waste(customer, waste_cost)
+            self.stats.record_waste(customer, waste_cost, self.clock)
         else:
             # Successful transaction
             wait_time = self.clock - customer.arrival_time
@@ -361,7 +410,8 @@ class TimHortonsSim(SimEngine):
             self.stats.record_success(
                 customer.channel, 
                 wait_time, 
-                sales_price
+                sales_price,
+                self.clock
             )
             
             # 3. For WALK_IN customers, they need a seat in the dining area
@@ -372,13 +422,41 @@ class TimHortonsSim(SimEngine):
                     self.schedule(dining_duration, EventType.DINING_DONE, customer)
                 else:
                     # No seats available - customer leaves
-                    self.stats.record_no_seat()
+                    self.stats.record_no_seat(self.clock)
 
     def process_renege_check(self, customer):
         # If time is up and food isn't ready, and customer hasn't already reneged
         if not customer.is_ready and not customer.has_reneged:
-            customer.has_reneged = True
-            self.stats.record_renege()
+            # For drive-thru customers: only renege if they're still in the drive-thru stage
+            # (waiting in queue or currently ordering). Once they've entered the kitchen, 
+            # they've committed to the order and won't renege.
+            if customer.channel == Channel.DRIVE_THRU:
+                # Check if customer is still in drive-thru stage:
+                # - In drive-thru queue (waiting to order)
+                # - Currently ordering (we can't easily check this, but if they're not in 
+                #   kitchen queue yet, they're still in drive-thru stage)
+                if customer in self.q_drivethru:
+                    # Customer is still waiting in drive-thru queue - they can renege
+                    customer.has_reneged = True
+                    self.stats.record_renege(self.clock)
+                    # Remove from queue
+                    try:
+                        self.q_drivethru.remove(customer)
+                    except ValueError:
+                        pass  # Already removed
+                elif customer not in self.q_kitchen and customer not in self.q_packing:
+                    # Customer is not in kitchen or packing queue yet
+                    # They might be currently ordering at drive-thru station
+                    # In this case, we'll allow renege (though in reality they might have already ordered)
+                    # This is a simplification - in practice, once ordering starts, they're committed
+                    customer.has_reneged = True
+                    self.stats.record_renege(self.clock)
+                # If customer has already entered kitchen queue, ignore this renege check
+                # (they've committed to the order)
+            else:
+                # For mobile customers, renege if food isn't ready
+                customer.has_reneged = True
+                self.stats.record_renege(self.clock)
     
     # ==========================
     # 6. DINING AREA LOGIC
@@ -441,6 +519,10 @@ class TimHortonsSim(SimEngine):
 
     # --- Utility ---
     def schedule_next_arrival(self, channel):
+        # Check if we should stop accepting new orders
+        if self.stop_accepting_time is not None and self.clock >= self.stop_accepting_time:
+            return  # Stop scheduling new arrivals
+        
         rate = 0
         # determine peak or normal rate
         current_hour = int(self.clock // 60) + self.cfg.opening_time
@@ -455,6 +537,10 @@ class TimHortonsSim(SimEngine):
             elif channel == Channel.DRIVE_THRU: rate = self.cfg.lambda_drivethru
             elif channel == Channel.MOBILE: rate = self.cfg.lambda_mobile
         delay = self.cfg.get_inter_arrival(rate)
+    
+        # Check if the arrival would be after stop_accepting_time
+        if self.stop_accepting_time is not None and (self.clock + delay) >= self.stop_accepting_time:
+            return  # Don't schedule arrival that would be after stop time
     
         # Create new customer
         new_id = self.customer_counter + 1

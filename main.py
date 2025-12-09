@@ -7,7 +7,7 @@ def run_scenario():
     # Enable debug mode to see queue states
     config.debug_mode = True  # Set to False to disable debug output
     config.debug_interval = 30.0  # Print every 30 minutes
-    
+    config.priority_packing = False
     # 2. Init Simulation
     sim = TimHortonsSim(config)
     
@@ -19,10 +19,10 @@ def run_scenario():
     
     # 4. Run
     print("Starting Simulation...")
-    sim.run(480) # 8 Hours
+    sim.run(900) # 8 Hours
     
     # 5. Report
-    report = sim.stats.generate_report(480)
+    report = sim.stats.generate_report(900) # 15 hours 6am to 9pm
     sim.stats.print_table_report(report)
 
 if __name__ == "__main__":

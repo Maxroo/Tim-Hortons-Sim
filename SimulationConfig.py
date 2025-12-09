@@ -13,6 +13,15 @@ class SimulationConfig:
     # Debug flag - set to True to enable debug output
     debug_mode: bool = False
     debug_interval: float = 60.0  # Print debug info every N minutes
+    
+    # Packing Priority Policy
+    priority_packing: bool = True  # If True: Walk-in and Drive-thru immediate pickup, Mobile has lag
+                                   # If False: Normal FIFO order (all channels same)
+    
+    # Simulation Control
+    warm_up_period: float = 30.0  # Warm-up period in minutes (data not recorded)
+    stop_accepting_orders_before_end: float = 10.0  # Stop accepting new orders N minutes before simulation ends
+    
     # 1. Staffing (Decision Variables)
     num_cashiers: int = 1 # required M/M/1
     num_packers: int = 1 # required M/M/1

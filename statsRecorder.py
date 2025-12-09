@@ -13,6 +13,7 @@ class Statistics:
     def __init__(self, config):
         self.cfg = config
         self.time = 0.0
+        self.warm_up_period = config.warm_up_period
         # --- Financial Counters ---
         self.waste_count = 0  # Food made but not eaten
         self.total_waste_cost = 0.0  # Total material cost of wasted items
@@ -63,8 +64,9 @@ class Statistics:
         self.busy_minutes_cooks = 0.0
         self.busy_minutes_espresso = 0.0
     
-    def record_penalties(self, penalties):
-        self.total_penalties += penalties
+    def record_penalties(self, penalty_amount, current_time=None):
+        if current_time is None or not self.is_warm_up(current_time):
+            self.total_penalties += penalty_amount
     
     def record_labour_costs(self, costs):
         self.total_labour_costs = costs
@@ -72,11 +74,19 @@ class Statistics:
     def record_queue_length(self, queue_name, length):
         self.queue_lengths[queue_name] = length
 
-    def record_arrival(self, channel):
-        self.total_arrivals[channel] += 1
+    def is_warm_up(self, current_time):
+        """Check if current time is within warm-up period."""
+        return current_time < self.warm_up_period
+    
+    def record_arrival(self, channel, current_time=None):
+        if current_time is None or not self.is_warm_up(current_time):
+            self.total_arrivals[channel] += 1
 
-    def record_waste(self, customer=None, waste_cost=0.0):
+    def record_waste(self, customer=None, waste_cost=0.0, current_time=None):
         """Record wasted items. Records the material cost of wasted items."""
+        if current_time is not None and self.is_warm_up(current_time):
+            return  # Don't record during warm-up
+        
         self.waste_count += 1
         if waste_cost > 0:
             self.total_waste_cost += waste_cost
@@ -87,21 +97,27 @@ class Statistics:
                          customer.needs_hot_food * self.cfg.cost_hot_food)
             self.total_waste_cost += waste_cost
 
-    def record_success(self, channel, wait_time, sales_price):
+    def record_success(self, channel, wait_time, sales_price, current_time=None):
+        if current_time is not None and self.is_warm_up(current_time):
+            return  # Don't record during warm-up
+        
         self.throughput[channel] += 1
         self.wait_times[channel].append(wait_time)
         self.total_sales_price += sales_price
         # self.total_revenue += sales_price  # Keep for backward compatibility
 
-    def record_balk(self):
-        self.balk_count += 1
+    def record_balk(self, current_time=None):
+        if current_time is None or not self.is_warm_up(current_time):
+            self.balk_count += 1
 
-    def record_renege(self):
-        self.renege_count += 1
+    def record_renege(self, current_time=None):
+        if current_time is None or not self.is_warm_up(current_time):
+            self.renege_count += 1
     
-    def record_no_seat(self):
+    def record_no_seat(self, current_time=None):
         """Record walk-in customer who couldn't find a seat."""
-        self.no_seat_count += 1
+        if current_time is None or not self.is_warm_up(current_time):
+            self.no_seat_count += 1
 
     def record_usage(self, resource, duration):
         self.usage[resource] += duration
