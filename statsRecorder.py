@@ -74,6 +74,12 @@ class Statistics:
             'queue_wait_kitchen': 0.0,
             'queue_wait_packing': 0.0
         }
+        
+        self.renege_channel = {
+            Channel.WALK_IN: 0,
+            Channel.DRIVE_THRU: 0,
+            Channel.MOBILE: 0
+        }
 
         # --- Resource Usage (Accumulators) ---
         # We track total minutes resources were active
@@ -126,13 +132,14 @@ class Statistics:
         if current_time is None or not self.is_warm_up(current_time):
             self.balk_count += 1
 
-    def record_renege(self, stage, current_time=None):
+    def record_renege(self, stage,current_time=None):
         if current_time is None or not self.is_warm_up(current_time):
             self.renege[stage] += 1
 
-    def record_renege_count(self, current_time=None):
+    def record_renege_count(self,customer, current_time=None):
         if current_time is None or not self.is_warm_up(current_time):
             self.renege_count += 1
+            self.renege_channel[customer.channel] += 1
     
     def record_no_seat(self, current_time=None):
         """Record walk-in customer who couldn't find a seat."""
@@ -168,6 +175,8 @@ class Statistics:
 
         report['queue_lengths'] = sum(self.queue_lengths.values())
         report['queue_breakdown'] = self.queue_lengths
+        
+        report['renege_channel_breakdown'] = self.renege_channel
         
         # B. Wait Times (Avg + Tail)
         for channel, times in self.wait_times.items():
@@ -213,7 +222,8 @@ class Statistics:
         report['total_labour_costs'] = self.total_labour_costs
         report['total_sales_price'] = self.total_sales_price  # Total selling price
         report['total_penalties'] = self.total_penalties
-        report['total_profit'] = self.total_sales_price - self.total_waste_cost - self.total_labour_costs - self.total_penalties  # Profit = Sales Price - Waste Cost - Labour Costs
+        report['no_seat_penalty'] = self.no_seat_count * self.cfg.no_seat_penalty
+        report['total_profit'] = self.total_sales_price - self.total_waste_cost - self.total_labour_costs - self.total_penalties - report['no_seat_penalty']  # Profit = Sales Price - Waste Cost - Labour Costs
         report['order_timings'] = self.order_timings
         return report
 

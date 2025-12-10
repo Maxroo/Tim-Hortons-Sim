@@ -15,27 +15,28 @@ class SimulationConfig:
     debug_interval: float = 60.0  # Print debug info every N minutes
     
     # Packing Priority Policy
-    priority_packing: bool = False  # If True: Walk-in and Drive-thru immediate pickup, Mobile has lag
+    priority_packing: str = None  # If True: Walk-in and Drive-thru immediate pickup, Mobile has lag
                                    # If False: Normal FIFO order (all channels same)
+    
     
     # Simulation Control
     warm_up_period: float = 30.0  # Warm-up period in minutes (data not recorded)
     
     # 1. Staffing (Decision Variables)
     num_cashiers: int = 2 # required M/M/1
-    num_packers: int = 1 # required M/M/1
+    num_packers: int = 2 # required M/M/1
     num_dt_stations: int = 1 # required M/M/1
 
     num_cooks: int = 3
     num_bussers: int = 1               # Staff for cleaning tables
     # 2. Capacity Constraints
     max_drive_thru_queue: int = 10     # Cars
-    pickup_shelf_capacity: int = 15    # Bags
+    pickup_shelf_capacity: int = 10    # Bags
     coffee_urn_size: int = 40          # Portions per urn
     num_coffee_urns: int = 2           # Number of coffee urns
     num_espresso_machines: int = 3     # Espresso Shots
     seating_capacity: int = 30         # Number of seats in dining area
-    
+    no_seat_penalty: float = 1.0        # Penalty cost per customer dissatisfied due to no seating available
     # Probabilities for order types
     prob_order_coffee: float = 0.80
     prob_order_espresso: float = 1 - prob_order_coffee 
@@ -50,11 +51,16 @@ class SimulationConfig:
     mean_cashier_time: float = 1.5
     mean_dt_order_time: float = 1.0
     mean_kitchen_time: float = 3.5
-    mean_pack_time: float = 0.5
+    mean_pack_time: float = 1
     mean_espresso_time: float = 0.5 
     brew_time: float = 5.0
     mean_dining_time: float = 15.0     # Average time customers spend eating
     mean_cleaning_time: float = 2.0   # Average time to clean a table
+    
+    other_pickup_delay_mean: float = 2.0  # Mean pickup delay for Walk-in and Drive-thru
+    other_pickup_delay_std: float = 1.0   # Stddev of pickup delay for Walk-in and Drive-thru
+    mobile_pickup_delay_mean: float = 5.0  # Mean pickup delay for Mobile orders
+    mobile_pickup_delay_std: float = 2.0   # Stddev of pickup delay for Mobile orders
     
     # Arrivals (Customers per Hour -> Converted to Inter-arrival mins)
     # store hours

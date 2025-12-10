@@ -269,17 +269,19 @@ if __name__ == "__main__":
     runner.define_experiment(
         variables_dict={
             # ===== STAFFING VARIABLES =====
-            'num_cashiers': [1, 2, 3],              # Front counter staff
+            'num_cashiers': [1, 2, 5, 10],              # Front counter staff
             'num_packers': [1, 2],               # Staff putting food in bags
-            # 'num_dt_stations': [1, 2, 3, 4, 5],           # Drive-thru order stations
             'num_cooks': [2, 3, 4],           # Kitchen staff
-            'num_bussers': [1, 2],               # Staff for cleaning tables
+            'num_bussers': [1, 2, 5],               # Staff for cleaning tables
+
+            # 'num_dt_stations': [1, 2, 3, 4, 5],           # Drive-thru order stations
             
             # ===== CAPACITY CONSTRAINTS =====
-            # 'max_drive_thru_queue': [8, 10, 12], # Max cars in drive-thru
-            'pickup_shelf_capacity': [15, 30], # Bags on shelf
+            'pickup_shelf_capacity': [1,10, 50], # Bags on shelf
             'coffee_urn_size': [30, 40, 50],     # Coffee portions
-            'num_espresso_machines': [2, 3, 4],  # Espresso machines
+            'num_espresso_machines': [1, 2],  # Espresso machines
+
+            # 'max_drive_thru_queue': [8, 10, 12], # Max cars in drive-thru
             # 'seating_capacity': [25, 30, 35],    # Dining area seats
             
             # # ===== ARRIVAL RATES (customers per hour) =====
@@ -291,13 +293,14 @@ if __name__ == "__main__":
             # 'peak_lambda_mobile': [15, 20, 25],  # Mobile order arrival rate (peak hours)
             
             # ===== TIMING (Average service times in minutes) =====
+            'num_coffee_urns': [1, 2],          # Number of coffee urns
+            'brew_time': [5.0, 8.0],              # Coffee brewing time
+           
             # 'mean_cashier_time': [1.0, 1.5, 2.0],      # Cashier service time
             # 'mean_dt_order_time': [0.8, 1.0, 1.2],     # Drive-thru order time
             # 'mean_kitchen_time': [3.0, 3.5, 4.0],      # Kitchen preparation time
             # 'mean_pack_time': [0.8, 1.0, 1.2],         # Packing time
             # 'mean_espresso_time': [0.3, 0.5],     # Espresso making time
-            'brew_time': [5.0, 8.0],              # Coffee brewing time
-            'num_coffee_urns': [1, 2],          # Number of coffee urns
             # 'mean_dining_time': [12.0, 15.0, 18.0],    # Customer dining time
             # 'mean_cleaning_time': [1.5, 2.0, 2.5],     # Table cleaning time
             
@@ -310,7 +313,7 @@ if __name__ == "__main__":
             # 'prob_order_hot_food': [0.10, 0.15, 0.20], # Probability of ordering hot food
             
             # ===== PACKING PRIORITY POLICY =====
-            'priority_packing': [True, False],         # Priority packing: True=Walk-in/DT immediate, Mobile lag; False=Normal FIFO
+            'priority_packing': [None, "MOBILE", 'DRIVE_THRU'],         # Priority packing: True=Walk-in/DT immediate, Mobile lag; False=Normal FIFO
             
             # ===== FINANCIAL (pricing and costs) =====
             # 'price_coffee': [2.00, 2.50, 3.00],      # Selling price per coffee
@@ -331,5 +334,5 @@ if __name__ == "__main__":
         num_replications=5,  # More replications for better statistics
         sim_duration=900
     )
-    runner.run_experiment('experiment_results_v4.csv')
+    runner.run_experiment('experiment_results_v5.csv')
 

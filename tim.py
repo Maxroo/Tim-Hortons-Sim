@@ -65,6 +65,10 @@ class TimHortonsSim(SimEngine):
         print(f"DEBUG: Time = {self.clock:.2f} minutes ({self.clock/60:.2f} hours)")
         print(f"{'='*60}")
         print(f"QUEUE LENGTHS:")
+        # print first 10 customer in packing queue
+        # print(f"  Packing Queue (first 10): {[cust.channel for cust in list(self.q_packing)[:10]]} (Total: {len(self.q_packing)})")
+        # print last 10 customer in packing queue
+        # print(f"  Packing Queue (last 10): {[cust.channel for cust in list(self.q_packing)[-10:]]} (Total: {len(self.q_packing)})")
         print(f"  Walk-in:     {len(self.q_walkin)}")
         print(f"  Drive-thru:  {len(self.q_drivethru)}")
         print(f"  Kitchen:     {len(self.q_kitchen)}")
@@ -326,26 +330,35 @@ class TimHortonsSim(SimEngine):
 
         # 4. Move to Packing with Priority
         customer.t_enter_packing = self.clock
-        if self.cfg.priority_packing:
-            # Priority mode: mobile and Drive-thru go to front, walk-in goes to back
-            if customer.channel == Channel.WALK_IN:
-                # Walk-in orders go to the end (lowest priority)
-                self.q_packing.append(customer)
-            else:
-                # mobile and Drive-thru go to the front (highest priority)
-                # Find the position after the last mobile or Drive-thru order
-                mobile_pos = None
-                for i, existing_cust in enumerate(self.q_packing):
-                    if existing_cust.channel == Channel.MOBILE or existing_cust.channel == Channel.DRIVE_THRU:
-                        mobile_pos = i + 1
-                if mobile_pos is not None:
-                    # Insert after last mobile or Drive-thru order
-                    temp_list = list(self.q_packing)
-                    temp_list.insert(mobile_pos, customer)
-                    self.q_packing = deque(temp_list)
-                else:
-                    # No mobile or Drive-thru orders, just append
-                    self.q_packing.appendleft(customer)
+        
+        # all channel have the same priority
+        if self.cfg.priority_packing != None:
+            priority_levels = {
+                Channel.DRIVE_THRU: 1,
+                Channel.MOBILE: 1,
+                Channel.WALK_IN: 1
+            }
+            if self.cfg.priority_packing == 'DRIVE_THRU':
+                # Priority mode: DRIVE_THRU (highest) > MOBILE = WALK_IN 
+                priority_levels[Channel.DRIVE_THRU] = 3
+            elif self.cfg.priority_packing == 'WALK_IN':
+                # Priority mode: WALK_IN (highest) > MOBILE = DRIVE_THRU 
+                priority_levels[Channel.WALK_IN] = 3
+            elif self.cfg.priority_packing == 'MOBILE':
+                # Priority mode: MOBILE (highest) > DRIVE_THRU = WALK_IN
+                priority_levels[Channel.MOBILE] = 3
+
+            customer_priority = priority_levels[customer.channel]
+            insert_pos = len(self.q_packing)  # Default: append to end
+            
+            # Find insertion position: insert before first lower-priority customer
+            for i, existing_cust in enumerate(self.q_packing):
+                if priority_levels[existing_cust.channel] < customer_priority:
+                    insert_pos = i
+            # Insert at the correct position
+            temp_list = list(self.q_packing)
+            temp_list.insert(insert_pos, customer)
+            self.q_packing = deque(temp_list)
         else:
             # Normal FIFO mode: all channels same priority
             self.q_packing.append(customer)
@@ -379,7 +392,7 @@ class TimHortonsSim(SimEngine):
             if cust.has_reneged:
                 # Customer reneged while in packing queue (before packing started)
                 # Food is already made, so record waste
-                waste_cost = self.calculate_order_cost(cust)
+                waste_cost = self.calculate_order_price(cust)
                 self.stats.record_waste(cust, waste_cost, self.clock)
                 # Don't pack it, just free the shelf space (food was made but not packed)
                 self.try_start_packing()
@@ -387,35 +400,24 @@ class TimHortonsSim(SimEngine):
                 return
             
             self.busy_packers += 1
-            duration = random.normalvariate(self.cfg.mean_pack_time, 0.2)
+            duration = random.normalvariate(self.cfg.mean_pack_time, 0.5)
             self.stats.record_usage('PACKER', duration, self.clock)
             self.schedule(duration, EventType.PACKING_DONE, cust)
 
     def process_packing_done(self, customer):
         self.busy_packers -= 1
         
-        customer.t_packing_done = self.clock
-        
-        # Check shelf capacity before putting on shelf
-        if self.shelf_occupancy >= self.cfg.pickup_shelf_capacity:
-            # Shelf is full, wait for pickup before scheduling this order's pickup
-            # This should not happen if try_start_packing check works, but add safety check
-            pass
-        
+        customer.t_packing_done = self.clock    
         # Put on shelf
         self.shelf_occupancy += 1
         customer.is_ready = True
         
         # Priority mode: Walk-in and Drive-thru immediate, Mobile has lag
-        if self.cfg.priority_packing:
-            # Priority mode: Walk-in and Drive-thru immediate pickup, Mobile has lag
-            if customer.channel == Channel.MOBILE:
-                lag = random.uniform(1, 3)
-            else:
-                lag = 0  # Walk-in and Drive-thru immediate
-        else:
+        if customer.channel == Channel.WALK_IN or customer.channel == Channel.DRIVE_THRU:
             # Normal mode: All channels have some pickup delay (simulating customer arrival to pickup)
-            lag = random.uniform(0.5, 2.0)  # All channels wait a bit before pickup
+            lag = random.normalvariate(self.cfg.other_pickup_delay_mean, self.cfg.other_pickup_delay_std)  # All channels wait a bit before pickup
+        elif customer.channel == Channel.MOBILE:
+            lag = random.normalvariate(self.cfg.mobile_pickup_delay_mean, self.cfg.mobile_pickup_delay_std)
         
         self.schedule(lag, EventType.PICKUP, customer)
         self.try_start_packing() # Packer takes next
@@ -426,14 +428,14 @@ class TimHortonsSim(SimEngine):
     def process_pickup(self, customer):
         customer.t_pickup = self.clock
         self.stats.record_order_timing(customer)
-        # 1. Always free the shelf space
+        #Free the shelf space
         self.shelf_occupancy -= 1
-        self.try_start_packing() # Unblock packer
+        self.try_start_packing()
         
         # 2. Check if this is a valid transaction
         if customer.has_reneged:
-            # The customer left long ago. The food is cold.
-            waste_cost = self.calculate_order_cost(customer)
+            # The customer left long ago. The food is wasted.
+            waste_cost = self.calculate_order_price(customer)
             self.stats.record_waste(customer, waste_cost, customer.arrival_time)
             self.stats.record_renege('pickup', customer.arrival_time)
         else:
@@ -447,7 +449,7 @@ class TimHortonsSim(SimEngine):
                 customer.arrival_time
             )
             
-            # 3. For WALK_IN customers, they need a seat in the dining area
+            # 3. For WALK_IN customers, they need a seat in the dining area\
             if customer.channel == Channel.WALK_IN:
                 if self.seating_occupancy < self.cfg.seating_capacity:
                     self.seating_occupancy += 1            
@@ -471,7 +473,7 @@ class TimHortonsSim(SimEngine):
                 if customer in self.q_drivethru:
                     # Customer is still waiting in drive-thru queue - they can renege
                     customer.has_reneged = True
-                    self.stats.record_renege_count(customer.arrival_time)
+                    self.stats.record_renege_count(customer ,customer.arrival_time)
                     # Remove from queue
                     try:
                         self.q_drivethru.remove(customer)
@@ -483,13 +485,13 @@ class TimHortonsSim(SimEngine):
                     # In this case, we'll allow renege (though in reality they might have already ordered)
                     # This is a simplification - in practice, once ordering starts, they're committed
                     customer.has_reneged = True
-                    self.stats.record_renege_count(customer.arrival_time)
+                    self.stats.record_renege_count(customer ,customer.arrival_time)
                 # If customer has already entered kitchen queue, ignore this renege check
                 # (they've committed to the order)
             else:
                 # For mobile customers, renege if food isn't ready
                 customer.has_reneged = True
-                self.stats.record_renege_count(customer.arrival_time)
+                self.stats.record_renege_count(customer ,customer.arrival_time)
     
     # ==========================
     # 6. DINING AREA LOGIC
@@ -540,14 +542,6 @@ class TimHortonsSim(SimEngine):
         revenue += customer.needs_espresso * (self.cfg.price_espresso - self.cfg.cost_espresso)
         revenue += customer.needs_hot_food * (self.cfg.price_hot_food - self.cfg.cost_hot_food)
         return revenue
-    
-    def calculate_order_cost(self, customer):
-        """Calculate material cost based on actual order items."""
-        cost = 0.0
-        cost += customer.needs_coffee * self.cfg.cost_coffee
-        cost += customer.needs_espresso * self.cfg.cost_espresso
-        cost += customer.needs_hot_food * self.cfg.cost_hot_food
-        return cost
 
     # --- Utility ---
     def schedule_next_arrival(self, channel):
