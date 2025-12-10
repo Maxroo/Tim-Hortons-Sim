@@ -332,7 +332,7 @@ if __name__ == "__main__":
             # 'closing_time': [20.5, 21.0, 21.5],     # Store closing time (hours)
         },
         num_replications=5,  # More replications for better statistics
-        sim_duration=900
+        sim_duration=960
     )
-    runner.run_experiment('experiment_results_v5.csv')
+    runner.run_experiment('experiment_results_v7.csv')
 
