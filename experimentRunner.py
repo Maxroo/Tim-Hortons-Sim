@@ -269,17 +269,17 @@ if __name__ == "__main__":
     runner.define_experiment(
         variables_dict={
             # ===== STAFFING VARIABLES =====
-            'num_cashiers': [1, 2, 5, 10],              # Front counter staff
-            'num_packers': [1, 2],               # Staff putting food in bags
-            'num_cooks': [2, 3, 4],           # Kitchen staff
-            'num_bussers': [1, 2, 5],               # Staff for cleaning tables
+            'num_cashiers': [2, 4, 6, 8],              # Front counter staff
+            'num_packers': [2, 4, 6],               # Staff putting food in bags
+            'num_cooks': [3, 5, 7],           # Kitchen staff
+            'num_bussers': [1, 3],               # Staff for cleaning tables
 
             # 'num_dt_stations': [1, 2, 3, 4, 5],           # Drive-thru order stations
             
             # ===== CAPACITY CONSTRAINTS =====
-            'pickup_shelf_capacity': [1,10, 50], # Bags on shelf
-            'coffee_urn_size': [30, 40, 50],     # Coffee portions
-            'num_espresso_machines': [1, 2],  # Espresso machines
+            'pickup_shelf_capacity': [5,10,20], # Bags on shelf
+            'coffee_urn_size': [30, 60],     # Coffee portions
+            'num_espresso_machines': [1, 3],  # Espresso machines
 
             # 'max_drive_thru_queue': [8, 10, 12], # Max cars in drive-thru
             # 'seating_capacity': [25, 30, 35],    # Dining area seats
@@ -293,9 +293,9 @@ if __name__ == "__main__":
             # 'peak_lambda_mobile': [15, 20, 25],  # Mobile order arrival rate (peak hours)
             
             # ===== TIMING (Average service times in minutes) =====
-            'num_coffee_urns': [1, 2],          # Number of coffee urns
-            'brew_time': [5.0, 8.0],              # Coffee brewing time
+            'brew_time': [5.0, 10.0],              # Coffee brewing time
            
+            # 'num_coffee_urns': [1, 3],          # Number of coffee urns
             # 'mean_cashier_time': [1.0, 1.5, 2.0],      # Cashier service time
             # 'mean_dt_order_time': [0.8, 1.0, 1.2],     # Drive-thru order time
             # 'mean_kitchen_time': [3.0, 3.5, 4.0],      # Kitchen preparation time
