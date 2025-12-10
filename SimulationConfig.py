@@ -25,14 +25,20 @@ class SimulationConfig:
     # 1. Staffing (Decision Variables)
     num_cashiers: int = 2 # required M/M/1
     num_packers: int = 2 # required M/M/1
-    num_dt_stations: int = 1 # required M/M/1
-
     num_cooks: int = 3
     num_bussers: int = 1               # Staff for cleaning tables
+    
+    num_dt_stations: int = 1 # required M/M/1
+
+
+    num_default_cashiers: int = 2
+    num_default_packers: int = 2
+    num_default_cooks: int = 3
+    num_default_bussers: int = 1
     # 2. Capacity Constraints
     max_drive_thru_queue: int = 10     # Cars
     pickup_shelf_capacity: int = 10    # Bags
-    coffee_urn_size: int = 40          # Portions per urn
+    coffee_urn_size: int = 30          # Portions per urn
     num_coffee_urns: int = 2           # Number of coffee urns
     num_espresso_machines: int = 3     # Espresso Shots
     seating_capacity: int = 30         # Number of seats in dining area
@@ -48,8 +54,8 @@ class SimulationConfig:
 
     # 3. Timing (Minutes)
     # Average 1rvice times
-    mean_cashier_time: float = 1.5
-    mean_dt_order_time: float = 1.0
+    mean_cashier_time: float = 1.0 # 60 seconds
+    mean_dt_order_time: float = 0.5 # 30 seconds
     mean_kitchen_time: float = 3.5
     mean_pack_time: float = 1
     mean_espresso_time: float = 0.5 
@@ -68,7 +74,7 @@ class SimulationConfig:
     closing_time: float = 21.0  # Store closing time (9 PM) 
     last_order_time: float = closing_time - 0.5  # Last order accepted at 8:30 PM
     # arrival rates
-    peak_hours = [(7,9), (11,13)]  # 7-9am, 11am-1pm
+    peak_hours = None # [(7,9), (11,13)] # 7-9am, 11am-1pm
     # peak should be 140 per hour
     # Normal 80 per hour
     lambda_walkin: float = 40#40.0
@@ -109,6 +115,35 @@ class SimulationConfig:
     def get_inter_arrival(self, rate_per_hr):
         if rate_per_hr <= 0: return float('inf')
         return random.expovariate(rate_per_hr / 60.0)
+
+    # --- Staffing helpers ---
+    def is_peak_hour(self, hour_float: float) -> bool:
+        """
+        Returns True if the given hour (in store-local hours) falls inside any peak window.
+        peak_hours should be a list of (start_hour, end_hour) tuples. If peak_hours is None, returns False.
+        """
+        if not self.peak_hours:
+            return False
+        return any(start <= hour_float < end for start, end in self.peak_hours)
+
+    def staffing_for_hour(self, hour_float: float) -> dict:
+        """
+        Returns a staffing dict for the given hour using peak values during peak windows,
+        and default staffing otherwise.
+        """
+        if self.is_peak_hour(hour_float):
+            return {
+                'num_cashiers': self.num_cashiers,
+                'num_packers': self.num_packers,
+                'num_cooks': self.num_cooks,
+                'num_bussers': self.num_bussers,
+            }
+        return {
+            'num_cashiers': self.num_default_cashiers,
+            'num_packers': self.num_default_packers,
+            'num_cooks': self.num_default_cooks,
+            'num_bussers': self.num_default_bussers,
+        }
 
 # --- B. Enums & Domain Objects ---
 class Channel(Enum):

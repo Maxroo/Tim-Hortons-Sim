@@ -40,6 +40,10 @@ class TimHortonsSim(SimEngine):
         
         # --- Debug ---
         self.last_debug_time = 0.0  # Track last debug output time
+        
+        # Track current staffing mode (peak vs non-peak)
+        self._last_peak_state = None
+        self.update_staffing_by_time()
     
     # def run(self, duration):
     #     """Override run() to set simulation duration and stop accepting time."""
@@ -105,6 +109,8 @@ class TimHortonsSim(SimEngine):
     def handle_event(self, evt):
         # DEBUG: Print state periodically
         self.debug_print_state()
+        # Update staffing if peak/non-peak state changed
+        self.update_staffing_by_time()
         
         if evt.type == EventType.ARRIVAL:
             self.process_arrival(evt.customer)
@@ -127,6 +133,23 @@ class TimHortonsSim(SimEngine):
             self.process_dining_done(evt.customer)
         elif evt.type == EventType.CLEANING_DONE:
             self.process_cleaning_done(evt.customer)
+
+    def update_staffing_by_time(self):
+        """
+        Switch staffing between peak and non-peak based on current clock.
+        Peak uses primary staffing (num_*), non-peak uses num_default_*.
+        """
+        current_hour = (self.clock / 60.0) + self.cfg.opening_time
+        is_peak = self.cfg.is_peak_hour(current_hour)
+        if is_peak == self._last_peak_state:
+            return  # no change
+        
+        staffing = self.cfg.staffing_for_hour(current_hour)
+        self.cfg.num_cashiers = staffing['num_cashiers']
+        self.cfg.num_packers = staffing['num_packers']
+        self.cfg.num_cooks = staffing['num_cooks']
+        self.cfg.num_bussers = staffing['num_bussers']
+        self._last_peak_state = is_peak
 
     # ==========================
     # 1. ARRIVAL LOGIC
@@ -551,7 +574,8 @@ class TimHortonsSim(SimEngine):
         rate = 0
         if current_hour > self.cfg.last_order_time:
             return  # No more arrivals after last order time
-        if any(start <= current_hour < end for start, end in self.cfg.peak_hours):
+        is_peak = self.cfg.is_peak_hour(current_hour)
+        if is_peak:
             if channel == Channel.WALK_IN: rate = self.cfg.peak_lambda_walkin
             elif channel == Channel.DRIVE_THRU: rate = self.cfg.peak_lambda_drivethru
             elif channel == Channel.MOBILE: rate = self.cfg.peak_lambda_mobile
@@ -585,13 +609,41 @@ class TimHortonsSim(SimEngine):
     
     def calcualte_labour_costs(self):
         """Calculate total labour costs based on resource usage and wage rates."""
-        total_minutes = self.clock - self.cfg.warm_up_period
-        labour_cost = total_minutes / 60.0 * self.cfg.labour_cost_per_hour * (
+        total_minutes = max(self.clock - self.cfg.warm_up_period, 0)
+        if total_minutes <= 0:
+            return 0.0
+
+        start_hr = self.cfg.opening_time + (self.cfg.warm_up_period / 60.0)
+        end_hr = self.cfg.opening_time + (self.clock / 60.0)
+
+        peak_minutes = 0.0
+        if self.cfg.peak_hours:
+            for start, end in self.cfg.peak_hours:
+                overlap = max(0.0, min(end_hr, end) - max(start_hr, start))
+                peak_minutes += overlap * 60.0
+
+        peak_minutes = min(peak_minutes, total_minutes)
+        non_peak_minutes = total_minutes - peak_minutes
+
+        peak_staff = (
             self.cfg.num_cashiers +
-            self.cfg.num_dt_stations +
-            self.cfg.num_cooks +
             self.cfg.num_packers +
-            self.cfg.num_bussers
+            self.cfg.num_cooks +
+            self.cfg.num_bussers +
+            self.cfg.num_dt_stations
+        )
+        non_peak_staff = (
+            self.cfg.num_default_cashiers +
+            self.cfg.num_default_packers +
+            self.cfg.num_default_cooks +
+            self.cfg.num_default_bussers +
+            self.cfg.num_dt_stations
+        )
+
+        wage = self.cfg.labour_cost_per_hour
+        labour_cost = wage * (
+            (peak_minutes / 60.0) * peak_staff +
+            (non_peak_minutes / 60.0) * non_peak_staff
         )
         return labour_cost
     
