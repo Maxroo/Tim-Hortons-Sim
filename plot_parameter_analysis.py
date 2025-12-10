@@ -351,7 +351,7 @@ if __name__ == "__main__":
     import sys
     
     # Default CSV file
-    csv_file = 'experiment_results_v6.csv'
+    csv_file = 'experiment_results_v7.csv'
     
     # Allow command line argument for CSV file
     if len(sys.argv) > 1:
@@ -364,15 +364,15 @@ if __name__ == "__main__":
         sys.exit(1)
     
     # Print summary
-    # create_summary_statistics(csv_file)
+    create_summary_statistics(csv_file)
     
     # # Create all plots
-    # create_all_plots(csv_file)
+    create_all_plots(csv_file, output_dir='V7_plots')
     
     # Scenario-mean scatter example: change param_name as needed
-    # derive_order_complete_percentage(csv_file)
-    scenario_ids = [11132,15019,7341,15022,11203]
-    plot_scenario_mean_by_param(csv_file, 'order_complete_percentage', value_col='total_profit', scenario_ids=scenario_ids, output_dir='plots')
+    derive_order_complete_percentage(csv_file)
+    # scenario_ids = [11132,15019,7341,15022,11203]
+    # plot_scenario_mean_by_param(csv_file, 'order_complete_percentage', value_col='total_profit', scenario_ids=scenario_ids, output_dir='plots')
 
     print("\nDone! Check the 'plots' directory for all generated plots.")
 
