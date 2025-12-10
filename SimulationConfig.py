@@ -54,7 +54,7 @@ class SimulationConfig:
 
     # 3. Timing (Minutes)
     # Average 1rvice times
-    mean_cashier_time: float = 1.0 # 60 seconds
+    mean_cashier_time: float = 1.5 # 90 seconds
     mean_dt_order_time: float = 0.5 # 30 seconds
     mean_kitchen_time: float = 3.5
     mean_pack_time: float = 1
@@ -70,11 +70,11 @@ class SimulationConfig:
     
     # Arrivals (Customers per Hour -> Converted to Inter-arrival mins)
     # store hours
-    opening_time: float = 6.0   # Store opening time (6 AM)
+    opening_time: float = 5.0   # Store opening time (5 AM)
     closing_time: float = 21.0  # Store closing time (9 PM) 
     last_order_time: float = closing_time - 0.5  # Last order accepted at 8:30 PM
     # arrival rates
-    peak_hours = None # [(7,9), (11,13)] # 7-9am, 11am-1pm
+    peak_hours = [(6,9), (11,14)] # 6-9am, 11am-2pm
     # peak should be 140 per hour
     # Normal 80 per hour
     lambda_walkin: float = 40#40.0
@@ -106,7 +106,6 @@ class SimulationConfig:
     
     # Revenue (profit) = price - cost (calculated, not stored)
     
-    wage_per_min: float = 16.50 / 60.0 # $16.50/hr
     penalty_balk: float = 5.00
     penalty_renege: float = 10.00
     penalty_percentage: float = 0.1  # Penalty for abandoned orders (% of order revenue)

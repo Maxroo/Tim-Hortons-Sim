@@ -44,6 +44,11 @@ class TimHortonsSim(SimEngine):
         # Track current staffing mode (peak vs non-peak)
         self._last_peak_state = None
         self.update_staffing_by_time()
+        self.num_cashiers = self.cfg.num_default_packers
+        self.num_packers = self.cfg.num_default_packers
+        self.num_cooks = self.cfg.num_default_cooks
+        self.num_bussers = self.cfg.num_default_bussers
+        self.num_dt_stations = self.cfg.num_dt_stations
     
     # def run(self, duration):
     #     """Override run() to set simulation duration and stop accepting time."""
@@ -78,16 +83,16 @@ class TimHortonsSim(SimEngine):
         print(f"  Kitchen:     {len(self.q_kitchen)}")
         print(f"  Packing:     {len(self.q_packing)}")
         print(f"\nRESOURCE USAGE:")
-        print(f"  Cashiers:    {self.busy_cashiers}/{self.cfg.num_cashiers}")
-        print(f"  DT Stations: {self.busy_dt_stations}/{self.cfg.num_dt_stations}")
-        print(f"  Cooks:       {self.busy_cooks}/{self.cfg.num_cooks}")
-        print(f"  Packers:     {self.busy_packers}/{self.cfg.num_packers}")
+        print(f"  Cashiers:    {self.busy_cashiers}/{self.num_cashiers}")
+        print(f"  DT Stations: {self.busy_dt_stations}/{self.num_dt_stations}")
+        print(f"  Cooks:       {self.busy_cooks}/{self.num_cooks}")
+        print(f"  Packers:     {self.busy_packers}/{self.num_packers}")
         print(f"  Espresso:    {self.busy_espresso_machines}/{self.cfg.num_espresso_machines}")
         print(f"\nOTHER RESOURCES:")
         print(f"  Coffee Urns:  {self.urn_levels} (Brewing urns: {self.is_brewing})")
         print(f"  Shelf Space:  {self.shelf_occupancy}/{self.cfg.pickup_shelf_capacity}")
         print(f"  Seating:      {self.seating_occupancy}/{self.cfg.seating_capacity} (Dirty tables: {len(self.dirty_tables)})")
-        print(f"  Bussers:      {self.busy_bussers}/{self.cfg.num_bussers}")
+        print(f"  Bussers:      {self.busy_bussers}/{self.num_bussers}")
         
         # Show oldest customer in each queue
         if self.q_kitchen:
@@ -145,10 +150,10 @@ class TimHortonsSim(SimEngine):
             return  # no change
         
         staffing = self.cfg.staffing_for_hour(current_hour)
-        self.cfg.num_cashiers = staffing['num_cashiers']
-        self.cfg.num_packers = staffing['num_packers']
-        self.cfg.num_cooks = staffing['num_cooks']
-        self.cfg.num_bussers = staffing['num_bussers']
+        self.num_cashiers = staffing['num_cashiers']
+        self.num_packers = staffing['num_packers']
+        self.num_cooks = staffing['num_cooks']
+        self.num_bussers = staffing['num_bussers']
         self._last_peak_state = is_peak
 
     # ==========================
@@ -198,10 +203,13 @@ class TimHortonsSim(SimEngine):
     # --- Walk-In Cashiers ---
     def try_start_walkin(self):
         # Only use Cashier Resources
-        if self.busy_cashiers < self.cfg.num_cashiers and self.q_walkin:
+        if self.busy_cashiers < self.num_cashiers and self.q_walkin:
             cust = self.q_walkin.popleft()
             self.busy_cashiers += 1
-            
+            if cust.has_reneged:
+                self.stats.record_renege('cashier',cust.arrival_time)
+                self.try_start_walkin()
+                return
             duration = random.expovariate(1.0 / self.cfg.mean_cashier_time)
             self.stats.record_usage('CASHIER', duration, self.clock)
             self.schedule(duration, EventType.PAYMENT_DONE, cust)
@@ -219,7 +227,7 @@ class TimHortonsSim(SimEngine):
     # --- Drive-Thru Stations ---
     def try_start_drivethru(self):
         # Only use DT Station Resources
-        if self.busy_dt_stations < self.cfg.num_dt_stations and self.q_drivethru:
+        if self.busy_dt_stations < self.num_dt_stations and self.q_drivethru:
             cust = self.q_drivethru.popleft()
             self.busy_dt_stations += 1
             duration = random.expovariate(1.0 / self.cfg.mean_dt_order_time)
@@ -246,7 +254,7 @@ class TimHortonsSim(SimEngine):
         if not self.q_kitchen: return
         
         # 1. PRIMARY RESOURCE CHECK: We always need a human
-        if self.busy_cooks >= self.cfg.num_cooks: 
+        if self.busy_cooks >= self.num_cooks: 
             return
 
         # Peek at the next customer (don't remove yet)
@@ -408,7 +416,7 @@ class TimHortonsSim(SimEngine):
         if self.shelf_occupancy >= self.cfg.pickup_shelf_capacity:
             return # Blocked
             
-        if self.busy_packers < self.cfg.num_packers and self.q_packing:
+        if self.busy_packers < self.num_packers and self.q_packing:
             cust = self.q_packing.popleft()
             cust.t_packing_start = self.clock
             
@@ -528,7 +536,7 @@ class TimHortonsSim(SimEngine):
     
     def try_start_cleaning(self):
         """Start cleaning a dirty table if busser is available."""
-        if self.busy_bussers >= self.cfg.num_bussers:
+        if self.busy_bussers >= self.num_bussers:
             return  # All bussers busy
         
         if not self.dirty_tables:
@@ -570,7 +578,7 @@ class TimHortonsSim(SimEngine):
     def schedule_next_arrival(self, channel):
         # Check if we should stop accepting new orders
         # determine peak or normal rate
-        current_hour = int(self.clock / 60) + self.cfg.opening_time
+        current_hour = self.clock / 60 + self.cfg.opening_time
         rate = 0
         if current_hour > self.cfg.last_order_time:
             return  # No more arrivals after last order time

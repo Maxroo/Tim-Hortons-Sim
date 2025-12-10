@@ -61,6 +61,7 @@ class Statistics:
         }
 
         self.renege = {
+            'cashier': 0,
             'kitchen': 0,
             'packing': 0,
             'pickup': 0

@@ -19,10 +19,10 @@ def run_scenario():
     
     # 4. Run
     print("Starting Simulation...")
-    sim.run(900) # 8 Hours
+    sim.run(960) # 16 Hours
     
     # 5. Report
-    report = sim.stats.generate_report(900) # 15 hours 6am to 9pm
+    report = sim.stats.generate_report(960) # 16 hours 5am to 9pm
     sim.stats.print_table_report(report)
 
 if __name__ == "__main__":
